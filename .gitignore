@@ -1,0 +1,45 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Secrets / keys
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Logs
+*.log
+logs/
+
+# Runtime
+tmp/
+run/
+data/
+
+# Go
+bin/
+coverage.out
+*.test
+
+# Node
+node_modules/
+dist/
+.vite/
+coverage/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Database / backups
+*.sql
+*.dump
+*.backup
+
+# Docker overrides
+docker-compose.override.yml
