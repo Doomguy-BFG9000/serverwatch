@@ -1,121 +1,200 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 
+type MonitorStatus = {
+  id: number
+  name: string
+  monitor_type: string
+  target: string
+  enabled: boolean
+  status: string
+  response_time_ms?: number
+  status_code?: number
+  message?: string
+  last_checked_at?: string
+}
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [monitors, setMonitors] = useState<MonitorStatus[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  async function loadMonitors() {
+    try {
+      const response = await fetch('/api/v1/monitors/status')
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const data = await response.json()
+      setMonitors(data)
+      setError('')
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to load monitors',
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadMonitors()
+
+    const timer = window.setInterval(loadMonitors, 10000)
+
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const summary = useMemo(() => {
+    return {
+      total: monitors.length,
+      up: monitors.filter((item) => item.status === 'up').length,
+      down: monitors.filter((item) => item.status === 'down').length,
+      pending: monitors.filter(
+        (item) => item.status === 'pending',
+      ).length,
+    }
+  }, [monitors])
+
+  function formatLastChecked(value?: string) {
+    if (!value) {
+      return 'Not checked yet'
+    }
+
+    return new Date(value).toLocaleString()
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
+    <div className="app">
+      <header className="topbar">
         <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
+          <h1>ServerWatch</h1>
+          <p>Community Edition</p>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+        <div className="live-indicator">
+          <span />
+          Live
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <main className="content">
+        <section className="summary-grid">
+          <div className="summary-card">
+            <span>Total Monitors</span>
+            <strong>{summary.total}</strong>
+          </div>
+
+          <div className="summary-card">
+            <span>Up</span>
+            <strong>{summary.up}</strong>
+          </div>
+
+          <div className="summary-card">
+            <span>Down</span>
+            <strong>{summary.down}</strong>
+          </div>
+
+          <div className="summary-card">
+            <span>Pending</span>
+            <strong>{summary.pending}</strong>
+          </div>
+        </section>
+
+        <section className="monitor-section">
+          <div className="section-header">
+            <div>
+              <h2>Monitors</h2>
+              <p>Current infrastructure status</p>
+            </div>
+
+            <button onClick={loadMonitors}>
+              Refresh
+            </button>
+          </div>
+
+          {loading && (
+            <div className="message">
+              Loading monitors...
+            </div>
+          )}
+
+          {error && (
+            <div className="message error">
+              Failed to load monitors: {error}
+            </div>
+          )}
+
+          {!loading && !error && monitors.length === 0 && (
+            <div className="message">
+              No monitors configured.
+            </div>
+          )}
+
+          {!loading && monitors.length > 0 && (
+            <div className="monitor-list">
+              {monitors.map((monitor) => (
+                <article
+                  className="monitor-card"
+                  key={monitor.id}
+                >
+                  <div className="monitor-main">
+                    <div
+                      className={`status-dot ${monitor.status}`}
+                    />
+
+                    <div>
+                      <h3>{monitor.name}</h3>
+                      <p>{monitor.target}</p>
+                    </div>
+                  </div>
+
+                  <div className="monitor-meta">
+                    <div>
+                      <span>Status</span>
+                      <strong
+                        className={`status-text ${monitor.status}`}
+                      >
+                        {monitor.status.toUpperCase()}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Response</span>
+                      <strong>
+                        {monitor.response_time_ms !== undefined
+                          ? `${monitor.response_time_ms} ms`
+                          : '—'}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>HTTP</span>
+                      <strong>
+                        {monitor.status_code ?? '—'}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Last checked</span>
+                      <strong>
+                        {formatLastChecked(
+                          monitor.last_checked_at,
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
   )
 }
 
