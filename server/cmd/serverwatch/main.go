@@ -57,6 +57,15 @@ func main() {
 	mux.HandleFunc("DELETE /api/v1/monitors/{id}", monitorHandler.Delete)
 	mux.HandleFunc("GET /api/v1/monitors/status", monitorHandler.Status)
 	mux.HandleFunc("GET /api/v1/monitors/{id}/results", monitorHandler.Results)
+	mux.HandleFunc("PUT /api/v1/monitors/{id}", monitorHandler.Update)
+	mux.HandleFunc(
+		"GET /api/v1/monitors/{id}/stats",
+		monitorHandler.Stats,
+	)
+	mux.HandleFunc(
+		"GET /api/v1/monitors/{id}/chart",
+		monitorHandler.Chart,
+	)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           mux,
@@ -81,8 +90,6 @@ func main() {
 		syscall.SIGINT,
 		syscall.SIGTERM,
 	)
-
-	<-stop
 
 	<-stop
 

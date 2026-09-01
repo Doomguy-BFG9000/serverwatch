@@ -2,7 +2,7 @@
 .env
 .env.*
 !.env.example
-
+serverwatch.env
 # Secrets / keys
 *.pem
 *.key

@@ -77,6 +77,36 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, monitor)
 }
 
+func parseRangeSeconds(value string) (int, bool) {
+	switch value {
+	case "", "24h":
+		return 24 * 60 * 60, true
+	case "1h":
+		return 60 * 60, true
+	case "7d":
+		return 7 * 24 * 60 * 60, true
+	case "30d":
+		return 30 * 24 * 60 * 60, true
+	default:
+		return 0, false
+	}
+}
+
+func chartRangeConfig(value string) (int, int, bool) {
+	switch value {
+	case "", "24h":
+		return 24 * 60 * 60, 5 * 60, true
+	case "1h":
+		return 60 * 60, 60, true
+	case "7d":
+		return 7 * 24 * 60 * 60, 60 * 60, true
+	case "30d":
+		return 30 * 24 * 60 * 60, 6 * 60 * 60, true
+	default:
+		return 0, 0, false
+	}
+}
+
 func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
 	monitors, err := h.Repository.List(r.Context())
 	if err != nil {
@@ -160,6 +190,57 @@ func (h *MonitorHandler) Status(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MonitorHandler) Results(w http.ResponseWriter, r *http.Request) {
+	idValue := r.PathValue("id")
+
+	id, err := strconv.ParseInt(idValue, 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid monitor id",
+		})
+		return
+	}
+
+	rangeValue := r.URL.Query().Get("range")
+
+	sinceSeconds, ok := parseRangeSeconds(rangeValue)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid range",
+		})
+		return
+	}
+
+	limit := 500
+
+	if limitValue := r.URL.Query().Get("limit"); limitValue != "" {
+		parsedLimit, err := strconv.Atoi(limitValue)
+
+		if err != nil || parsedLimit < 1 || parsedLimit > 5000 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid limit",
+			})
+			return
+		}
+
+		limit = parsedLimit
+	}
+
+	results, err := h.Repository.ListResultsSince(
+		r.Context(),
+		id,
+		sinceSeconds,
+		limit,
+	)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "failed to load monitor results",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, results)
+}
+func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, err := parseMonitorID(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
@@ -168,7 +249,55 @@ func (h *MonitorHandler) Results(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.Repository.GetByID(r.Context(), id)
+	var input service.UpdateMonitorInput
+
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid_json",
+		})
+		return
+	}
+
+	input.Name = strings.TrimSpace(input.Name)
+	input.MonitorType = strings.ToLower(strings.TrimSpace(input.MonitorType))
+	input.Target = strings.TrimSpace(input.Target)
+
+	if input.Name == "" || input.MonitorType == "" || input.Target == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "name, monitor_type and target are required",
+		})
+		return
+	}
+
+	switch input.MonitorType {
+	case "http", "https", "tcp":
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "unsupported monitor_type",
+		})
+		return
+	}
+
+	if input.IntervalSeconds < 10 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "interval_seconds must be at least 10",
+		})
+		return
+	}
+
+	if input.TimeoutSeconds < 1 || input.TimeoutSeconds > 60 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "timeout_seconds must be between 1 and 60",
+		})
+		return
+	}
+
+	monitor, err := h.Repository.Update(
+		r.Context(),
+		id,
+		input,
+	)
+
 	if errors.Is(err, repository.ErrMonitorNotFound) {
 		writeJSON(w, http.StatusNotFound, map[string]any{
 			"error": "monitor not found",
@@ -178,37 +307,83 @@ func (h *MonitorHandler) Results(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
-			"error": "failed to get monitor",
+			"error": "failed to update monitor",
 		})
 		return
 	}
 
-	limit := 50
+	writeJSON(w, http.StatusOK, monitor)
+}
 
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		value, parseErr := strconv.Atoi(raw)
+func (h *MonitorHandler) Stats(w http.ResponseWriter, r *http.Request) {
+	idValue := r.PathValue("id")
 
-		if parseErr != nil || value < 1 || value > 500 {
-			writeJSON(w, http.StatusBadRequest, map[string]any{
-				"error": "limit must be between 1 and 500",
-			})
-			return
-		}
-
-		limit = value
+	id, err := strconv.ParseInt(idValue, 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid monitor id",
+		})
+		return
 	}
 
-	results, err := h.Repository.ListResults(
+	rangeValue := r.URL.Query().Get("range")
+
+	sinceSeconds, ok := parseRangeSeconds(rangeValue)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid range",
+		})
+		return
+	}
+
+	stats, err := h.Repository.GetStatsSince(
 		r.Context(),
 		id,
-		limit,
+		sinceSeconds,
 	)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{
-			"error": "failed to load monitor results",
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "failed to load monitor stats",
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, results)
+	writeJSON(w, http.StatusOK, stats)
+}
+
+func (h *MonitorHandler) Chart(w http.ResponseWriter, r *http.Request) {
+	idValue := r.PathValue("id")
+
+	id, err := strconv.ParseInt(idValue, 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid monitor id",
+		})
+		return
+	}
+
+	sinceSeconds, bucketSeconds, ok := chartRangeConfig(
+		r.URL.Query().Get("range"),
+	)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid range",
+		})
+		return
+	}
+
+	points, err := h.Repository.ListChartPoints(
+		r.Context(),
+		id,
+		sinceSeconds,
+		bucketSeconds,
+	)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "failed to load chart data",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, points)
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { FormEvent } from 'react'
 import './App.css'
 
 type MonitorStatus = {
@@ -12,6 +13,44 @@ type MonitorStatus = {
   status_code?: number
   message?: string
   last_checked_at?: string
+  interval_seconds: number
+  timeout_seconds: number
+}
+
+type MonitorResult = {
+  id: number
+  monitor_id: number
+  status: string
+  response_time_ms: number
+  status_code?: number
+  message?: string
+  checked_at: string
+}
+
+type NewMonitor = {
+  name: string
+  monitor_type: string
+  target: string
+  interval_seconds: number
+  timeout_seconds: number
+}
+type MonitorStats = {
+  monitor_id: number
+  total_checks: number
+  up_checks: number
+  down_checks: number
+  uptime_percentage: number
+  average_response_ms: number
+}
+
+type TimeRange = '1h' | '24h' | '7d' | '30d'
+
+const emptyMonitor: NewMonitor = {
+  name: '',
+  monitor_type: 'https',
+  target: '',
+  interval_seconds: 60,
+  timeout_seconds: 10,
 }
 
 function App() {
@@ -19,6 +58,77 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  const [showAddMonitor, setShowAddMonitor] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
+  const [newMonitor, setNewMonitor] =
+    useState<NewMonitor>(emptyMonitor)
+
+  const [selectedMonitor, setSelectedMonitor] =
+    useState<MonitorStatus | null>(null)
+
+  const [results, setResults] = useState<MonitorResult[]>([])
+  const [resultsLoading, setResultsLoading] = useState(false)
+
+  const [editingMonitor, setEditingMonitor] =
+    useState<MonitorStatus | null>(null)
+
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+
+  const [deletingMonitor, setDeletingMonitor] = useState(false)
+const [stats, setStats] = useState<MonitorStats | null>(null)
+const [statsLoading, setStatsLoading] = useState(false)
+const responseChart = buildResponseChart(results)
+const [selectedRange, setSelectedRange] =
+  useState<TimeRange>('24h')
+
+async function loadMonitorAnalytics(
+  monitorID: number,
+  range: TimeRange,
+) {
+  setResultsLoading(true)
+  setStatsLoading(true)
+
+  try {
+    const [resultsResponse, statsResponse] =
+      await Promise.all([
+        fetch(
+          `/api/v1/monitors/${monitorID}/results?range=${range}&limit=5000`,
+        ),
+        fetch(
+          `/api/v1/monitors/${monitorID}/stats?range=${range}`,
+        ),
+      ])
+
+    if (!resultsResponse.ok) {
+      throw new Error(
+        `History HTTP ${resultsResponse.status}`,
+      )
+    }
+
+    if (!statsResponse.ok) {
+      throw new Error(
+        `Stats HTTP ${statsResponse.status}`,
+      )
+    }
+
+    const [resultsData, statsData] =
+      await Promise.all([
+        resultsResponse.json(),
+        statsResponse.json(),
+      ])
+
+    setResults(resultsData)
+    setStats(statsData)
+  } catch {
+    setResults([])
+    setStats(null)
+  } finally {
+    setResultsLoading(false)
+    setStatsLoading(false)
+  }
+}
   async function loadMonitors() {
     try {
       const response = await fetch('/api/v1/monitors/status')
@@ -28,6 +138,7 @@ function App() {
       }
 
       const data = await response.json()
+
       setMonitors(data)
       setError('')
     } catch (err) {
@@ -52,10 +163,14 @@ function App() {
   const summary = useMemo(() => {
     return {
       total: monitors.length,
-      up: monitors.filter((item) => item.status === 'up').length,
-      down: monitors.filter((item) => item.status === 'down').length,
+      up: monitors.filter(
+        (item) => item.enabled && item.status === 'up',
+      ).length,
+      down: monitors.filter(
+        (item) => item.enabled && item.status === 'down',
+      ).length,
       pending: monitors.filter(
-        (item) => item.status === 'pending',
+        (item) => item.enabled && item.status === 'pending',
       ).length,
     }
   }, [monitors])
@@ -68,6 +183,262 @@ function App() {
     return new Date(value).toLocaleString()
   }
 
+  function closeAddMonitor() {
+    if (saving) {
+      return
+    }
+
+    setShowAddMonitor(false)
+    setFormError('')
+    setNewMonitor(emptyMonitor)
+  }
+
+async function openMonitorDetails(
+  monitor: MonitorStatus,
+) {
+  setSelectedMonitor(monitor)
+  setSelectedRange('24h')
+  setStats(null)
+
+  await loadMonitorAnalytics(
+    monitor.id,
+    '24h',
+  )
+}
+async function changeRange(range: TimeRange) {
+  if (!selectedMonitor) {
+    return
+  }
+
+  setSelectedRange(range)
+
+  await loadMonitorAnalytics(
+    selectedMonitor.id,
+    range,
+  )
+}
+
+  async function toggleMonitor(monitor: MonitorStatus) {
+    try {
+      const response = await fetch(
+        `/api/v1/monitors/${monitor.id}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: monitor.name,
+            monitor_type: monitor.monitor_type,
+            target: monitor.target,
+            interval_seconds: monitor.interval_seconds,
+            timeout_seconds: monitor.timeout_seconds,
+            enabled: !monitor.enabled,
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      setSelectedMonitor(null)
+      await loadMonitors()
+    } catch (err) {
+      window.alert(
+        err instanceof Error
+          ? `Failed to update monitor: ${err.message}`
+          : 'Failed to update monitor',
+      )
+    }
+  }
+
+  async function deleteMonitor(monitor: MonitorStatus) {
+    const confirmed = window.confirm(
+      `Delete monitor "${monitor.name}"?`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingMonitor(true)
+
+    try {
+      const response = await fetch(
+        `/api/v1/monitors/${monitor.id}`,
+        {
+          method: 'DELETE',
+        },
+      )
+
+      if (!response.ok && response.status !== 204) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      setSelectedMonitor(null)
+      await loadMonitors()
+    } catch (err) {
+      window.alert(
+        err instanceof Error
+          ? `Failed to delete monitor: ${err.message}`
+          : 'Failed to delete monitor',
+      )
+    } finally {
+      setDeletingMonitor(false)
+    }
+  }
+
+  async function handleAddMonitor(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
+
+    setSaving(true)
+    setFormError('')
+
+    try {
+      const response = await fetch('/api/v1/monitors', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newMonitor),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || `HTTP ${response.status}`,
+        )
+      }
+
+      setShowAddMonitor(false)
+      setNewMonitor(emptyMonitor)
+
+      await loadMonitors()
+    } catch (err) {
+      setFormError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to create monitor',
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleEditMonitor(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
+
+    if (!editingMonitor) {
+      return
+    }
+
+    setEditSaving(true)
+    setEditError('')
+
+    try {
+      const response = await fetch(
+        `/api/v1/monitors/${editingMonitor.id}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: editingMonitor.name,
+            monitor_type: editingMonitor.monitor_type,
+            target: editingMonitor.target,
+            interval_seconds:
+              editingMonitor.interval_seconds,
+            timeout_seconds:
+              editingMonitor.timeout_seconds,
+            enabled: editingMonitor.enabled,
+          }),
+        },
+      )
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || `HTTP ${response.status}`,
+        )
+      }
+
+      setEditingMonitor(null)
+      setSelectedMonitor(null)
+
+      await loadMonitors()
+    } catch (err) {
+      setEditError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to update monitor',
+      )
+    } finally {
+      setEditSaving(false)
+    }
+  }
+function buildResponseChart(data: MonitorResult[]) {
+  if (data.length === 0) {
+    return {
+      points: '',
+      max: 0,
+      min: 0,
+      average: 0,
+    }
+  }
+
+  // API returns newest first. Reverse for chronological chart order.
+  const ordered = [...data].reverse()
+
+  const values = ordered.map((item) => item.response_time_ms)
+
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  const average =
+    values.reduce((total, value) => total + value, 0) /
+    values.length
+
+  const width = 700
+  const height = 180
+  const paddingX = 12
+  const paddingY = 15
+
+  const usableWidth = width - paddingX * 2
+  const usableHeight = height - paddingY * 2
+
+  const range = Math.max(max - min, 1)
+
+  const points = ordered
+    .map((item, index) => {
+      const x =
+        ordered.length === 1
+          ? width / 2
+          : paddingX +
+            (index / (ordered.length - 1)) * usableWidth
+
+      const y =
+        paddingY +
+        ((max - item.response_time_ms) / range) *
+          usableHeight
+
+      return `${x},${y}`
+    })
+    .join(' ')
+
+  return {
+    points,
+    max,
+    min,
+    average,
+  }
+}
   return (
     <div className="app">
       <header className="topbar">
@@ -76,9 +447,19 @@ function App() {
           <p>Community Edition</p>
         </div>
 
-        <div className="live-indicator">
-          <span />
-          Live
+        <div className="topbar-actions">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => setShowAddMonitor(true)}
+          >
+            + Add Monitor
+          </button>
+
+          <div className="live-indicator">
+            <span />
+            Live
+          </div>
         </div>
       </header>
 
@@ -112,7 +493,10 @@ function App() {
               <p>Current infrastructure status</p>
             </div>
 
-            <button onClick={loadMonitors}>
+            <button
+              type="button"
+              onClick={loadMonitors}
+            >
               Refresh
             </button>
           </div>
@@ -129,11 +513,13 @@ function App() {
             </div>
           )}
 
-          {!loading && !error && monitors.length === 0 && (
-            <div className="message">
-              No monitors configured.
-            </div>
-          )}
+          {!loading &&
+            !error &&
+            monitors.length === 0 && (
+              <div className="message">
+                No monitors configured.
+              </div>
+            )}
 
           {!loading && monitors.length > 0 && (
             <div className="monitor-list">
@@ -141,10 +527,17 @@ function App() {
                 <article
                   className="monitor-card"
                   key={monitor.id}
+                  onClick={() =>
+                    openMonitorDetails(monitor)
+                  }
                 >
                   <div className="monitor-main">
                     <div
-                      className={`status-dot ${monitor.status}`}
+                      className={`status-dot ${
+                        monitor.enabled
+                          ? monitor.status
+                          : 'paused'
+                      }`}
                     />
 
                     <div>
@@ -156,10 +549,17 @@ function App() {
                   <div className="monitor-meta">
                     <div>
                       <span>Status</span>
+
                       <strong
-                        className={`status-text ${monitor.status}`}
+                        className={`status-text ${
+                          monitor.enabled
+                            ? monitor.status
+                            : 'paused'
+                        }`}
                       >
-                        {monitor.status.toUpperCase()}
+                        {monitor.enabled
+                          ? monitor.status.toUpperCase()
+                          : 'PAUSED'}
                       </strong>
                     </div>
 
@@ -194,6 +594,717 @@ function App() {
           )}
         </section>
       </main>
+
+      {showAddMonitor && (
+        <div className="modal-backdrop">
+          <div className="modal-card">
+            <div className="modal-header">
+              <div>
+                <h2>Add Monitor</h2>
+                <p>
+                  Create a new ServerWatch monitor.
+                </p>
+              </div>
+
+              <button
+                className="close-button"
+                type="button"
+                onClick={closeAddMonitor}
+              >
+                ×
+              </button>
+            </div>
+
+            <form
+              className="monitor-form"
+              onSubmit={handleAddMonitor}
+            >
+              <label>
+                Monitor name
+
+                <input
+                  type="text"
+                  value={newMonitor.name}
+                  onChange={(event) =>
+                    setNewMonitor({
+                      ...newMonitor,
+                      name: event.target.value,
+                    })
+                  }
+                  placeholder="Production Website"
+                  required
+                />
+              </label>
+
+              <label>
+                Monitor type
+
+                <select
+                  value={newMonitor.monitor_type}
+                  onChange={(event) =>
+                    setNewMonitor({
+                      ...newMonitor,
+                      monitor_type:
+                        event.target.value,
+                    })
+                  }
+                >
+                  <option value="https">
+                    HTTPS
+                  </option>
+                  <option value="http">
+                    HTTP
+                  </option>
+                  <option value="tcp">
+                    TCP
+                  </option>
+                </select>
+              </label>
+
+              <label>
+                Target
+
+                <input
+                  type="text"
+                  value={newMonitor.target}
+                  onChange={(event) =>
+                    setNewMonitor({
+                      ...newMonitor,
+                      target: event.target.value,
+                    })
+                  }
+                  placeholder="https://example.com"
+                  required
+                />
+              </label>
+
+              <div className="form-row">
+                <label>
+                  Check every
+
+                  <select
+                    value={
+                      newMonitor.interval_seconds
+                    }
+                    onChange={(event) =>
+                      setNewMonitor({
+                        ...newMonitor,
+                        interval_seconds: Number(
+                          event.target.value,
+                        ),
+                      })
+                    }
+                  >
+                    <option value={30}>
+                      30 seconds
+                    </option>
+                    <option value={60}>
+                      1 minute
+                    </option>
+                    <option value={300}>
+                      5 minutes
+                    </option>
+                    <option value={600}>
+                      10 minutes
+                    </option>
+                  </select>
+                </label>
+
+                <label>
+                  Timeout
+
+                  <select
+                    value={
+                      newMonitor.timeout_seconds
+                    }
+                    onChange={(event) =>
+                      setNewMonitor({
+                        ...newMonitor,
+                        timeout_seconds: Number(
+                          event.target.value,
+                        ),
+                      })
+                    }
+                  >
+                    <option value={5}>
+                      5 seconds
+                    </option>
+                    <option value={10}>
+                      10 seconds
+                    </option>
+                    <option value={15}>
+                      15 seconds
+                    </option>
+                    <option value={30}>
+                      30 seconds
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              {formError && (
+                <div className="form-error">
+                  {formError}
+                </div>
+              )}
+
+              <div className="form-actions">
+                <button
+                  type="button"
+                  onClick={closeAddMonitor}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={saving}
+                >
+                  {saving
+                    ? 'Creating...'
+                    : 'Create Monitor'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {selectedMonitor && (
+        <div className="modal-backdrop">
+          <div className="modal-card monitor-detail-modal">
+            <div className="modal-header">
+              <div>
+                <h2>{selectedMonitor.name}</h2>
+                <p>{selectedMonitor.target}</p>
+              </div>
+
+              <button
+                className="close-button"
+                type="button"
+                onClick={() =>
+                  setSelectedMonitor(null)
+                }
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="detail-summary">
+              <div>
+                <span>Status</span>
+
+                <strong
+                  className={`status-text ${
+                    selectedMonitor.enabled
+                      ? selectedMonitor.status
+                      : 'paused'
+                  }`}
+                >
+                  {selectedMonitor.enabled
+                    ? selectedMonitor.status.toUpperCase()
+                    : 'PAUSED'}
+                </strong>
+              </div>
+
+              <div>
+                <span>Response</span>
+
+                <strong>
+                  {selectedMonitor.response_time_ms !==
+                  undefined
+                    ? `${selectedMonitor.response_time_ms} ms`
+                    : '—'}
+                </strong>
+              </div>
+
+              <div>
+                <span>HTTP Code</span>
+
+                <strong>
+                  {selectedMonitor.status_code ?? '—'}
+                </strong>
+              </div>
+
+              <div>
+                <span>Last Checked</span>
+
+                <strong>
+                  {formatLastChecked(
+                    selectedMonitor.last_checked_at,
+                  )}
+                </strong>
+              </div>
+            </div>
+<div className="monitor-insights">
+  <div className="insight-card">
+    <span>Uptime</span>
+
+    <strong>
+      {statsLoading
+        ? '...'
+        : stats
+          ? `${stats.uptime_percentage.toFixed(2)}%`
+          : '—'}
+    </strong>
+  </div>
+
+  <div className="insight-card">
+    <span>Average Response</span>
+
+    <strong>
+      {statsLoading
+        ? '...'
+        : stats
+          ? `${stats.average_response_ms.toFixed(2)} ms`
+          : '—'}
+    </strong>
+  </div>
+
+  <div className="insight-card">
+    <span>Total Checks</span>
+
+    <strong>
+      {statsLoading
+        ? '...'
+        : stats
+          ? stats.total_checks
+          : '—'}
+    </strong>
+  </div>
+
+  <div className="insight-card">
+    <span>Successful Checks</span>
+
+    <strong>
+      {statsLoading
+        ? '...'
+        : stats
+          ? stats.up_checks
+          : '—'}
+    </strong>
+  </div>
+</div>
+            <div className="detail-actions">
+              <button
+                type="button"
+                onClick={() =>
+                  toggleMonitor(selectedMonitor)
+                }
+              >
+                {selectedMonitor.enabled
+                  ? 'Pause Monitor'
+                  : 'Resume Monitor'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingMonitor(
+                    selectedMonitor,
+                  )
+                  setEditError('')
+                }}
+              >
+                Edit
+              </button>
+
+              <button
+                type="button"
+                className="danger-button"
+                disabled={deletingMonitor}
+                onClick={() =>
+                  deleteMonitor(selectedMonitor)
+                }
+              >
+                {deletingMonitor
+                  ? 'Deleting...'
+                  : 'Delete'}
+              </button>
+            </div>
+
+<div className="range-selector">
+  <span>Time Range</span>
+
+  <div className="range-buttons">
+    {(
+      [
+        ['1h', '1H'],
+        ['24h', '24H'],
+        ['7d', '7D'],
+        ['30d', '30D'],
+      ] as [TimeRange, string][]
+    ).map(([value, label]) => (
+      <button
+        key={value}
+        type="button"
+        className={
+          selectedRange === value
+            ? 'range-button active'
+            : 'range-button'
+        }
+        disabled={
+          resultsLoading || statsLoading
+        }
+        onClick={() => changeRange(value)}
+      >
+        {label}
+      </button>
+    ))}
+  </div>
+</div>
+<div className="response-chart-section">
+  <div className="chart-header">
+    <div>
+      <h3>Response Time Trend</h3>
+      <p>Latest {results.length} monitoring checks</p>
+    </div>
+
+    {results.length > 0 && (
+      <div className="chart-stats">
+        <span>
+          Min
+          <strong>
+            {responseChart.min.toFixed(0)} ms
+          </strong>
+        </span>
+
+        <span>
+          Avg
+          <strong>
+            {responseChart.average.toFixed(0)} ms
+          </strong>
+        </span>
+
+        <span>
+          Max
+          <strong>
+            {responseChart.max.toFixed(0)} ms
+          </strong>
+        </span>
+      </div>
+    )}
+  </div>
+
+  {resultsLoading && (
+    <div className="message">
+      Loading response trend...
+    </div>
+  )}
+
+  {!resultsLoading && results.length === 0 && (
+    <div className="message">
+      No response-time data available.
+    </div>
+  )}
+
+  {!resultsLoading && results.length > 0 && (
+    <div className="response-chart-wrapper">
+      <svg
+        className="response-chart"
+        viewBox="0 0 700 180"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="Response time trend"
+      >
+        <line
+          className="chart-grid-line"
+          x1="0"
+          x2="700"
+          y1="15"
+          y2="15"
+        />
+
+        <line
+          className="chart-grid-line"
+          x1="0"
+          x2="700"
+          y1="90"
+          y2="90"
+        />
+
+        <line
+          className="chart-grid-line"
+          x1="0"
+          x2="700"
+          y1="165"
+          y2="165"
+        />
+
+        <polyline
+          className="response-chart-line"
+          points={responseChart.points}
+          fill="none"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    </div>
+  )}
+
+  {!resultsLoading && results.length > 0 && (
+    <div className="chart-axis">
+      <span>
+        {new Date(
+          results[results.length - 1].checked_at,
+        ).toLocaleTimeString()}
+      </span>
+
+	<span>Earlier → Latest</span>
+      <span>
+        {new Date(
+          results[0].checked_at,
+        ).toLocaleTimeString()}
+      </span>
+    </div>
+  )}
+</div>
+            <div className="history-section">
+              <h3>Recent Checks</h3>
+
+              {resultsLoading && (
+                <div className="message">
+                  Loading history...
+                </div>
+              )}
+
+              {!resultsLoading &&
+                results.length === 0 && (
+                  <div className="message">
+                    No monitoring history
+                    available.
+                  </div>
+                )}
+
+              {!resultsLoading &&
+                results.length > 0 && (
+                  <div className="history-table">
+                    <div className="history-row history-header">
+                      <span>Status</span>
+                      <span>Response</span>
+                      <span>HTTP</span>
+                      <span>Checked At</span>
+                    </div>
+
+                    {results.map((result) => (
+                      <div
+                        className="history-row"
+                        key={result.id}
+                      >
+                        <span
+                          className={`status-text ${result.status}`}
+                        >
+                          {result.status.toUpperCase()}
+                        </span>
+
+                        <span>
+                          {result.response_time_ms}{' '}
+                          ms
+                        </span>
+
+                        <span>
+                          {result.status_code ?? '—'}
+                        </span>
+
+                        <span>
+                          {new Date(
+                            result.checked_at,
+                          ).toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingMonitor && (
+        <div className="modal-backdrop">
+          <div className="modal-card">
+            <div className="modal-header">
+              <div>
+                <h2>Edit Monitor</h2>
+                <p>
+                  Update monitor configuration.
+                </p>
+              </div>
+
+              <button
+                className="close-button"
+                type="button"
+                onClick={() => {
+                  if (!editSaving) {
+                    setEditingMonitor(null)
+                    setEditError('')
+                  }
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <form
+              className="monitor-form"
+              onSubmit={handleEditMonitor}
+            >
+              <label>
+                Monitor name
+
+                <input
+                  type="text"
+                  value={editingMonitor.name}
+                  onChange={(event) =>
+                    setEditingMonitor({
+                      ...editingMonitor,
+                      name: event.target.value,
+                    })
+                  }
+                  required
+                />
+              </label>
+
+              <label>
+                Monitor type
+
+                <select
+                  value={
+                    editingMonitor.monitor_type
+                  }
+                  onChange={(event) =>
+                    setEditingMonitor({
+                      ...editingMonitor,
+                      monitor_type:
+                        event.target.value,
+                    })
+                  }
+                >
+                  <option value="https">
+                    HTTPS
+                  </option>
+                  <option value="http">
+                    HTTP
+                  </option>
+                  <option value="tcp">
+                    TCP
+                  </option>
+                </select>
+              </label>
+
+              <label>
+                Target
+
+                <input
+                  type="text"
+                  value={editingMonitor.target}
+                  onChange={(event) =>
+                    setEditingMonitor({
+                      ...editingMonitor,
+                      target: event.target.value,
+                    })
+                  }
+                  required
+                />
+              </label>
+
+              <div className="form-row">
+                <label>
+                  Check every
+
+                  <select
+                    value={
+                      editingMonitor.interval_seconds
+                    }
+                    onChange={(event) =>
+                      setEditingMonitor({
+                        ...editingMonitor,
+                        interval_seconds: Number(
+                          event.target.value,
+                        ),
+                      })
+                    }
+                  >
+                    <option value={30}>
+                      30 seconds
+                    </option>
+                    <option value={60}>
+                      1 minute
+                    </option>
+                    <option value={300}>
+                      5 minutes
+                    </option>
+                    <option value={600}>
+                      10 minutes
+                    </option>
+                  </select>
+                </label>
+
+                <label>
+                  Timeout
+
+                  <select
+                    value={
+                      editingMonitor.timeout_seconds
+                    }
+                    onChange={(event) =>
+                      setEditingMonitor({
+                        ...editingMonitor,
+                        timeout_seconds: Number(
+                          event.target.value,
+                        ),
+                      })
+                    }
+                  >
+                    <option value={5}>
+                      5 seconds
+                    </option>
+                    <option value={10}>
+                      10 seconds
+                    </option>
+                    <option value={15}>
+                      15 seconds
+                    </option>
+                    <option value={30}>
+                      30 seconds
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              {editError && (
+                <div className="form-error">
+                  {editError}
+                </div>
+              )}
+
+              <div className="form-actions">
+                <button
+                  type="button"
+                  disabled={editSaving}
+                  onClick={() => {
+                    setEditingMonitor(null)
+                    setEditError('')
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={editSaving}
+                >
+                  {editSaving
+                    ? 'Saving...'
+                    : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

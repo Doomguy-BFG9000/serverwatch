@@ -30,6 +30,21 @@ type MonitorResult struct {
 	Message        string    `json:"message,omitempty"`
 	CheckedAt      time.Time `json:"checked_at"`
 }
+type MonitorStats struct {
+	MonitorID         int64   `json:"monitor_id"`
+	TotalChecks       int64   `json:"total_checks"`
+	UpChecks          int64   `json:"up_checks"`
+	DownChecks        int64   `json:"down_checks"`
+	UptimePercentage  float64 `json:"uptime_percentage"`
+	AverageResponseMS float64 `json:"average_response_ms"`
+}
+
+type MonitorChartPoint struct {
+	CheckedAt         time.Time `json:"checked_at"`
+	AverageResponseMS float64   `json:"average_response_ms"`
+	UpChecks          int64     `json:"up_checks"`
+	DownChecks        int64     `json:"down_checks"`
+}
 
 type CreateMonitorResultInput struct {
 	MonitorID      int64
@@ -39,14 +54,24 @@ type CreateMonitorResultInput struct {
 	Message        string
 }
 type MonitorStatus struct {
-	ID             int64      `json:"id"`
-	Name           string     `json:"name"`
-	MonitorType    string     `json:"monitor_type"`
-	Target         string     `json:"target"`
-	Enabled        bool       `json:"enabled"`
-	Status         string     `json:"status"`
-	ResponseTimeMS *int64     `json:"response_time_ms,omitempty"`
-	StatusCode     *int       `json:"status_code,omitempty"`
-	Message        string     `json:"message,omitempty"`
-	LastCheckedAt  *time.Time `json:"last_checked_at,omitempty"`
+	ID              int64      `json:"id"`
+	Name            string     `json:"name"`
+	MonitorType     string     `json:"monitor_type"`
+	Target          string     `json:"target"`
+	Enabled         bool       `json:"enabled"`
+	IntervalSeconds int        `json:"interval_seconds"`
+	TimeoutSeconds  int        `json:"timeout_seconds"`
+	Status          string     `json:"status"`
+	ResponseTimeMS  *int64     `json:"response_time_ms,omitempty"`
+	StatusCode      *int       `json:"status_code,omitempty"`
+	Message         string     `json:"message,omitempty"`
+	LastCheckedAt   *time.Time `json:"last_checked_at,omitempty"`
+}
+type UpdateMonitorInput struct {
+	Name            string `json:"name"`
+	MonitorType     string `json:"monitor_type"`
+	Target          string `json:"target"`
+	IntervalSeconds int    `json:"interval_seconds"`
+	TimeoutSeconds  int    `json:"timeout_seconds"`
+	Enabled         bool   `json:"enabled"`
 }
