@@ -43,6 +43,13 @@ type MonitorStats = {
   average_response_ms: number
 }
 
+type MonitorChartPoint = {
+  checked_at: string
+  average_response_ms: number
+  up_checks: number
+  down_checks: number
+}
+
 type TimeRange = '1h' | '24h' | '7d' | '30d'
 
 const emptyMonitor: NewMonitor = {
@@ -70,6 +77,10 @@ function App() {
   const [results, setResults] = useState<MonitorResult[]>([])
   const [resultsLoading, setResultsLoading] = useState(false)
 
+  const [chartPoints, setChartPoints] =
+    useState<MonitorChartPoint[]>([])
+  const [chartLoading, setChartLoading] = useState(false)
+
   const [editingMonitor, setEditingMonitor] =
     useState<MonitorStatus | null>(null)
 
@@ -77,58 +88,73 @@ function App() {
   const [editError, setEditError] = useState('')
 
   const [deletingMonitor, setDeletingMonitor] = useState(false)
-const [stats, setStats] = useState<MonitorStats | null>(null)
-const [statsLoading, setStatsLoading] = useState(false)
-const responseChart = buildResponseChart(results)
-const [selectedRange, setSelectedRange] =
-  useState<TimeRange>('24h')
+  const [stats, setStats] = useState<MonitorStats | null>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [selectedRange, setSelectedRange] =
+    useState<TimeRange>('24h')
+  const responseChart = buildResponseChart(chartPoints)
 
-async function loadMonitorAnalytics(
-  monitorID: number,
-  range: TimeRange,
-) {
-  setResultsLoading(true)
-  setStatsLoading(true)
-
-  try {
-    const [resultsResponse, statsResponse] =
-      await Promise.all([
-        fetch(
-          `/api/v1/monitors/${monitorID}/results?range=${range}&limit=5000`,
-        ),
-        fetch(
-          `/api/v1/monitors/${monitorID}/stats?range=${range}`,
-        ),
-      ])
-
-    if (!resultsResponse.ok) {
-      throw new Error(
-        `History HTTP ${resultsResponse.status}`,
-      )
-    }
-
-    if (!statsResponse.ok) {
-      throw new Error(
-        `Stats HTTP ${statsResponse.status}`,
-      )
-    }
-
-    const [resultsData, statsData] =
-      await Promise.all([
-        resultsResponse.json(),
-        statsResponse.json(),
-      ])
-
-    setResults(resultsData)
-    setStats(statsData)
-  } catch {
-    setResults([])
+  async function loadMonitorAnalytics(
+    monitorID: number,
+    range: TimeRange,
+  ) {
+    setStatsLoading(true)
+    setChartLoading(true)
     setStats(null)
-  } finally {
-    setResultsLoading(false)
+    setChartPoints([])
+
+    const [statsResult, chartResult] = await Promise.allSettled([
+      fetch(
+        `/api/v1/monitors/${monitorID}/stats?range=${range}`,
+      ).then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Stats HTTP ${response.status}`)
+        }
+
+        return (await response.json()) as MonitorStats
+      }),
+      fetch(
+        `/api/v1/monitors/${monitorID}/chart?range=${range}`,
+      ).then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Chart HTTP ${response.status}`)
+        }
+
+        return (await response.json()) as MonitorChartPoint[]
+      }),
+    ])
+
+    if (statsResult.status === 'fulfilled') {
+      setStats(statsResult.value)
+    }
+
+    if (chartResult.status === 'fulfilled') {
+      setChartPoints(chartResult.value)
+    }
+
     setStatsLoading(false)
+    setChartLoading(false)
   }
-}
+
+  async function loadRecentResults(monitorID: number) {
+    setResultsLoading(true)
+
+    try {
+      const response = await fetch(
+        `/api/v1/monitors/${monitorID}/results?range=30d&limit=50`,
+      )
+
+      if (!response.ok) {
+        throw new Error(`History HTTP ${response.status}`)
+      }
+
+      setResults((await response.json()) as MonitorResult[])
+    } catch {
+      setResults([])
+    } finally {
+      setResultsLoading(false)
+    }
+  }
   async function loadMonitors() {
     try {
       const response = await fetch('/api/v1/monitors/status')
@@ -198,12 +224,14 @@ async function openMonitorDetails(
 ) {
   setSelectedMonitor(monitor)
   setSelectedRange('24h')
+  setResults([])
   setStats(null)
+  setChartPoints([])
 
-  await loadMonitorAnalytics(
-    monitor.id,
-    '24h',
-  )
+  await Promise.all([
+    loadMonitorAnalytics(monitor.id, '24h'),
+    loadRecentResults(monitor.id),
+  ])
 }
 async function changeRange(range: TimeRange) {
   if (!selectedMonitor) {
@@ -212,10 +240,7 @@ async function changeRange(range: TimeRange) {
 
   setSelectedRange(range)
 
-  await loadMonitorAnalytics(
-    selectedMonitor.id,
-    range,
-  )
+  await loadMonitorAnalytics(selectedMonitor.id, range)
 }
 
   async function toggleMonitor(monitor: MonitorStatus) {
@@ -384,7 +409,7 @@ async function changeRange(range: TimeRange) {
       setEditSaving(false)
     }
   }
-function buildResponseChart(data: MonitorResult[]) {
+function buildResponseChart(data: MonitorChartPoint[]) {
   if (data.length === 0) {
     return {
       points: '',
@@ -394,10 +419,22 @@ function buildResponseChart(data: MonitorResult[]) {
     }
   }
 
-  // API returns newest first. Reverse for chronological chart order.
-  const ordered = [...data].reverse()
+  const ordered = data.filter((item) =>
+    Number.isFinite(item.average_response_ms),
+  )
 
-  const values = ordered.map((item) => item.response_time_ms)
+  if (ordered.length === 0) {
+    return {
+      points: '',
+      max: 0,
+      min: 0,
+      average: 0,
+    }
+  }
+
+  const values = ordered.map(
+    (item) => item.average_response_ms,
+  )
 
   const max = Math.max(...values)
   const min = Math.min(...values)
@@ -425,7 +462,7 @@ function buildResponseChart(data: MonitorResult[]) {
 
       const y =
         paddingY +
-        ((max - item.response_time_ms) / range) *
+        ((max - item.average_response_ms) / range) *
           usableHeight
 
       return `${x},${y}`
@@ -946,7 +983,7 @@ function buildResponseChart(data: MonitorResult[]) {
             : 'range-button'
         }
         disabled={
-          resultsLoading || statsLoading
+          statsLoading || chartLoading
         }
         onClick={() => changeRange(value)}
       >
@@ -959,10 +996,10 @@ function buildResponseChart(data: MonitorResult[]) {
   <div className="chart-header">
     <div>
       <h3>Response Time Trend</h3>
-      <p>Latest {results.length} monitoring checks</p>
+      <p>{chartPoints.length} aggregated data points</p>
     </div>
 
-    {results.length > 0 && (
+    {chartPoints.length > 0 && (
       <div className="chart-stats">
         <span>
           Min
@@ -988,19 +1025,19 @@ function buildResponseChart(data: MonitorResult[]) {
     )}
   </div>
 
-  {resultsLoading && (
+  {chartLoading && (
     <div className="message">
       Loading response trend...
     </div>
   )}
 
-  {!resultsLoading && results.length === 0 && (
+  {!chartLoading && chartPoints.length === 0 && (
     <div className="message">
       No response-time data available.
     </div>
   )}
 
-  {!resultsLoading && results.length > 0 && (
+  {!chartLoading && chartPoints.length > 0 && (
     <div className="response-chart-wrapper">
       <svg
         className="response-chart"
@@ -1043,18 +1080,18 @@ function buildResponseChart(data: MonitorResult[]) {
     </div>
   )}
 
-  {!resultsLoading && results.length > 0 && (
+  {!chartLoading && chartPoints.length > 0 && (
     <div className="chart-axis">
       <span>
         {new Date(
-          results[results.length - 1].checked_at,
+          chartPoints[0].checked_at,
         ).toLocaleTimeString()}
       </span>
 
 	<span>Earlier → Latest</span>
       <span>
         {new Date(
-          results[0].checked_at,
+          chartPoints[chartPoints.length - 1].checked_at,
         ).toLocaleTimeString()}
       </span>
     </div>
