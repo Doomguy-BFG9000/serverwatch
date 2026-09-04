@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/serverwatch/serverwatch/server/internal/repository"
+	"github.com/serverwatch/serverwatch/server/internal/service"
 )
 
 type Scheduler struct {
 	Repository *repository.MonitorRepository
 	Checker    *HTTPChecker
+	TCPChecker *TCPChecker
 	Interval   time.Duration
 }
 
@@ -21,6 +23,7 @@ func NewScheduler(
 	return &Scheduler{
 		Repository: repository,
 		Checker:    NewHTTPChecker(),
+		TCPChecker: NewTCPChecker(),
 		Interval:   5 * time.Second,
 	}
 }
@@ -87,10 +90,22 @@ func (s *Scheduler) runOnce(ctx context.Context) {
 				return
 			}
 
-			result := s.Checker.Check(
-				ctx,
-				monitorItem,
-			)
+			var result service.CreateMonitorResultInput
+
+			switch monitorItem.MonitorType {
+			case "http", "https":
+				result = s.Checker.Check(ctx, monitorItem)
+			case "tcp":
+				result = s.TCPChecker.Check(ctx, monitorItem)
+			default:
+				log.Printf(
+					"monitor %d (%s): unsupported monitor type %q",
+					monitorItem.ID,
+					monitorItem.Name,
+					monitorItem.MonitorType,
+				)
+				return
+			}
 
 			if err := s.Repository.SaveResult(
 				ctx,
