@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/serverwatch/serverwatch/server/internal/alert"
 	"github.com/serverwatch/serverwatch/server/internal/config"
 	httpapi "github.com/serverwatch/serverwatch/server/internal/http"
 	monitorengine "github.com/serverwatch/serverwatch/server/internal/monitor"
@@ -35,6 +36,11 @@ func main() {
 	monitorScheduler := monitorengine.NewScheduler(
 		monitorRepository,
 	)
+	monitorScheduler.AlertService = &alert.Service{
+		Store:   monitorRepository,
+		Sender:  alert.SMTPSender{Config: cfg.AlertEmail},
+		Enabled: cfg.AlertEmail.Enabled,
+	}
 
 	schedulerCtx, schedulerCancel := context.WithCancel(
 		context.Background(),
@@ -47,11 +53,13 @@ func main() {
 		Repository: monitorRepository,
 		SSLChecker: monitorengine.NewSSLChecker(),
 	}
+	alertHandler := &httpapi.AlertHandler{Config: cfg.AlertEmail}
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", healthHandler.Health)
 	mux.HandleFunc("GET /ready", healthHandler.Ready)
+	mux.HandleFunc("GET /api/v1/alerts/status", alertHandler.Status)
 	mux.HandleFunc("POST /api/v1/monitors", monitorHandler.Create)
 	mux.HandleFunc("GET /api/v1/monitors", monitorHandler.List)
 	mux.HandleFunc("GET /api/v1/monitors/{id}", monitorHandler.Get)

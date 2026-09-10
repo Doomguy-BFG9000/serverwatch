@@ -6,16 +6,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/serverwatch/serverwatch/server/internal/alert"
 	"github.com/serverwatch/serverwatch/server/internal/repository"
 	"github.com/serverwatch/serverwatch/server/internal/service"
 )
 
 type Scheduler struct {
-	Repository *repository.MonitorRepository
-	Checker    *HTTPChecker
-	TCPChecker *TCPChecker
-	SSLChecker *SSLChecker
-	Interval   time.Duration
+	Repository   *repository.MonitorRepository
+	Checker      *HTTPChecker
+	TCPChecker   *TCPChecker
+	SSLChecker   *SSLChecker
+	Interval     time.Duration
+	AlertService *alert.Service
 }
 
 func NewScheduler(
@@ -93,6 +95,7 @@ func (s *Scheduler) runOnce(ctx context.Context) {
 			}
 
 			var result service.CreateMonitorResultInput
+			var sslResult *SSLCheckResult
 
 			switch monitorItem.MonitorType {
 			case "http", "https":
@@ -100,7 +103,9 @@ func (s *Scheduler) runOnce(ctx context.Context) {
 			case "tcp":
 				result = s.TCPChecker.Check(ctx, monitorItem)
 			case "ssl":
-				result = s.SSLChecker.Check(ctx, monitorItem)
+				checked := s.SSLChecker.CheckCertificate(ctx, monitorItem)
+				sslResult = &checked
+				result = checked.Result
 			default:
 				log.Printf(
 					"monitor %d (%s): unsupported monitor type %q",
@@ -122,6 +127,20 @@ func (s *Scheduler) runOnce(ctx context.Context) {
 					err,
 				)
 				return
+			}
+			if s.AlertService != nil {
+				observation := service.AlertObservation{
+					Monitor: monitorItem, Status: result.Status,
+					ResponseTimeMS: result.ResponseTimeMS, StatusCode: result.StatusCode,
+					Message: result.Message, CheckedAt: time.Now(),
+				}
+				if sslResult != nil && sslResult.CertificateValid {
+					observation.SSL = &service.SSLAlertMetadata{
+						Subject: sslResult.Subject, Issuer: sslResult.Issuer,
+						NotAfter: sslResult.NotAfter, DaysRemaining: sslResult.DaysRemaining,
+					}
+				}
+				s.AlertService.Process(ctx, observation)
 			}
 
 			log.Printf(

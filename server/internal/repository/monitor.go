@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -271,6 +272,72 @@ func (r *MonitorRepository) SaveResult(
 
 	return err
 }
+
+func (r *MonitorRepository) EvaluateAlerts(ctx context.Context, observation service.AlertObservation) ([]service.AlertEvent, error) {
+	tx, err := r.DB.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	_, err = tx.Exec(ctx, `INSERT INTO monitor_alert_state (monitor_id) VALUES ($1) ON CONFLICT (monitor_id) DO NOTHING`, observation.Monitor.ID)
+	if err != nil {
+		return nil, err
+	}
+	var state service.AlertState
+	var lastStatus *string
+	err = tx.QueryRow(ctx, `
+		SELECT last_status, last_down_alert_at, last_recovery_alert_at,
+		       ssl_expiry_not_after, ssl_warned_30, ssl_warned_14, ssl_warned_7
+		FROM monitor_alert_state WHERE monitor_id = $1 FOR UPDATE`, observation.Monitor.ID).Scan(
+		&lastStatus, &state.LastDownAlertAt, &state.LastRecoveryAlertAt, &state.SSLExpiryNotAfter,
+		&state.SSLWarned30, &state.SSLWarned14, &state.SSLWarned7)
+	if err != nil {
+		return nil, err
+	}
+	state.LastStatus = ""
+	if lastStatus != nil {
+		state.LastStatus = *lastStatus
+	}
+
+	events := make([]service.AlertEvent, 0, 4)
+	if observation.Status == "down" && (state.LastStatus == "" || state.LastStatus == "up") {
+		events = append(events, service.AlertEvent{Type: "down"})
+		state.LastDownAlertAt = timePtr(observation.CheckedAt)
+	}
+	if observation.Status == "up" && state.LastStatus == "down" {
+		events = append(events, service.AlertEvent{Type: "recovery"})
+		state.LastRecoveryAlertAt = timePtr(observation.CheckedAt)
+	}
+	if observation.SSL != nil && observation.Status == "up" {
+		ssl := observation.SSL
+		if state.SSLExpiryNotAfter == nil || !state.SSLExpiryNotAfter.Equal(ssl.NotAfter) {
+			state.SSLExpiryNotAfter = timePtr(ssl.NotAfter)
+			state.SSLWarned30, state.SSLWarned14, state.SSLWarned7 = false, false, false
+		}
+		if ssl.DaysRemaining <= 30 && !state.SSLWarned30 {
+			events = append(events, service.AlertEvent{Type: "ssl_30"})
+			state.SSLWarned30 = true
+		}
+		if ssl.DaysRemaining <= 14 && !state.SSLWarned14 {
+			events = append(events, service.AlertEvent{Type: "ssl_14"})
+			state.SSLWarned14 = true
+		}
+		if ssl.DaysRemaining <= 7 && !state.SSLWarned7 {
+			events = append(events, service.AlertEvent{Type: "ssl_7"})
+			state.SSLWarned7 = true
+		}
+	}
+	_, err = tx.Exec(ctx, `UPDATE monitor_alert_state SET last_status=$2, last_down_alert_at=$3, last_recovery_alert_at=$4, ssl_expiry_not_after=$5, ssl_warned_30=$6, ssl_warned_14=$7, ssl_warned_7=$8, updated_at=NOW() WHERE monitor_id=$1`, observation.Monitor.ID, observation.Status, state.LastDownAlertAt, state.LastRecoveryAlertAt, state.SSLExpiryNotAfter, state.SSLWarned30, state.SSLWarned14, state.SSLWarned7)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+func timePtr(value time.Time) *time.Time { return &value }
 func (r *MonitorRepository) ListStatus(
 	ctx context.Context,
 ) ([]service.MonitorStatus, error) {

@@ -38,6 +38,8 @@ Thumbs.db
 
 # Database / backups
 *.sql
+!database/migrations/*.sql
+!server/internal/storage/migrations/*.sql
 *.dump
 *.backup
 

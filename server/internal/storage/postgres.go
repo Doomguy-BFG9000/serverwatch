@@ -39,5 +39,10 @@ func NewPostgresPool(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
+	if err := RunMigrations(ctx, pool); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("database migrations failed: %w", err)
+	}
+
 	return pool, nil
 }

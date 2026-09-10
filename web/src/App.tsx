@@ -64,6 +64,11 @@ type MonitorChartPoint = {
 }
 
 type TimeRange = '1h' | '24h' | '7d' | '30d'
+type AlertStatus = {
+  email_enabled: boolean
+  smtp_configured: boolean
+  recipient_configured: boolean
+}
 
 const emptyMonitor: NewMonitor = {
   name: '',
@@ -77,6 +82,7 @@ function App() {
   const [monitors, setMonitors] = useState<MonitorStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [alertStatus, setAlertStatus] = useState<AlertStatus | null>(null)
 
   const [showAddMonitor, setShowAddMonitor] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -212,8 +218,19 @@ function App() {
     }
   }
 
+  async function loadAlertStatus() {
+    try {
+      const response = await fetch('/api/v1/alerts/status')
+      if (!response.ok) return
+      setAlertStatus((await response.json()) as AlertStatus)
+    } catch {
+      setAlertStatus(null)
+    }
+  }
+
   useEffect(() => {
     loadMonitors()
+    loadAlertStatus()
 
     const timer = window.setInterval(loadMonitors, 10000)
 
@@ -559,6 +576,18 @@ function buildResponseChart(data: MonitorChartPoint[]) {
           <div className="summary-card">
             <span>Pending</span>
             <strong>{summary.pending}</strong>
+          </div>
+        </section>
+
+        <section className="alert-section">
+          <div>
+            <h2>Email Alerts</h2>
+            <p>SMTP is configured on the ServerWatch server using environment variables.</p>
+          </div>
+          <div className="alert-status-grid">
+            <span>Email Alerts <strong>{alertStatus?.email_enabled ? 'Enabled' : 'Disabled'}</strong></span>
+            <span>SMTP <strong>{alertStatus?.smtp_configured ? 'Configured' : 'Not Configured'}</strong></span>
+            <span>Recipient <strong>{alertStatus?.recipient_configured ? 'Configured' : 'Not Configured'}</strong></span>
           </div>
         </section>
 

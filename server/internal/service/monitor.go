@@ -53,6 +53,37 @@ type CreateMonitorResultInput struct {
 	StatusCode     *int
 	Message        string
 }
+
+type AlertObservation struct {
+	Monitor        Monitor
+	Status         string
+	ResponseTimeMS int64
+	StatusCode     *int
+	Message        string
+	CheckedAt      time.Time
+	SSL            *SSLAlertMetadata
+}
+
+type SSLAlertMetadata struct {
+	Subject       string
+	Issuer        string
+	NotAfter      time.Time
+	DaysRemaining int
+}
+
+type AlertEvent struct {
+	Type string
+}
+
+type AlertState struct {
+	LastStatus          string
+	LastDownAlertAt     *time.Time
+	LastRecoveryAlertAt *time.Time
+	SSLExpiryNotAfter   *time.Time
+	SSLWarned30         bool
+	SSLWarned14         bool
+	SSLWarned7          bool
+}
 type MonitorStatus struct {
 	ID              int64      `json:"id"`
 	Name            string     `json:"name"`

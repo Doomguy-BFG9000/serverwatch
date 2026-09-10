@@ -124,6 +124,23 @@ button {
   color: #172033;
 }
 
+.alert-section {
+  margin-top: 24px;
+  background: #ffffff;
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  padding: 20px 22px;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: center;
+}
+
+.alert-section h2 { margin: 0; font-size: 18px; }
+.alert-section p { margin: 6px 0 0; color: #778196; font-size: 13px; }
+.alert-status-grid { display: flex; gap: 24px; flex-wrap: wrap; color: #778196; font-size: 13px; }
+.alert-status-grid strong { display: block; color: #172033; margin-top: 5px; }
+
 /* Monitor Section */
 
 .monitor-section {
