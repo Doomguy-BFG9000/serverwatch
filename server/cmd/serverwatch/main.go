@@ -45,6 +45,7 @@ func main() {
 
 	monitorHandler := &httpapi.MonitorHandler{
 		Repository: monitorRepository,
+		SSLChecker: monitorengine.NewSSLChecker(),
 	}
 
 	mux := http.NewServeMux()
@@ -57,6 +58,7 @@ func main() {
 	mux.HandleFunc("DELETE /api/v1/monitors/{id}", monitorHandler.Delete)
 	mux.HandleFunc("GET /api/v1/monitors/status", monitorHandler.Status)
 	mux.HandleFunc("GET /api/v1/monitors/{id}/results", monitorHandler.Results)
+	mux.HandleFunc("GET /api/v1/monitors/{id}/ssl", monitorHandler.SSL)
 	mux.HandleFunc("PUT /api/v1/monitors/{id}", monitorHandler.Update)
 	mux.HandleFunc(
 		"GET /api/v1/monitors/{id}/stats",

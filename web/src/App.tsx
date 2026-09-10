@@ -27,6 +27,19 @@ type MonitorResult = {
   checked_at: string
 }
 
+type SSLDetails = {
+  monitor_id: number
+  status: string
+  response_time_ms: number
+  subject: string
+  issuer: string
+  not_before: string
+  not_after: string
+  days_remaining: number
+  certificate_valid: boolean
+  message: string
+}
+
 type NewMonitor = {
   name: string
   monitor_type: string
@@ -76,6 +89,8 @@ function App() {
 
   const [results, setResults] = useState<MonitorResult[]>([])
   const [resultsLoading, setResultsLoading] = useState(false)
+  const [sslDetails, setSSLDetails] = useState<SSLDetails | null>(null)
+  const [sslLoading, setSSLLoading] = useState(false)
 
   const [chartPoints, setChartPoints] =
     useState<MonitorChartPoint[]>([])
@@ -155,6 +170,25 @@ function App() {
       setResultsLoading(false)
     }
   }
+
+  async function loadSSLDetails(monitorID: number) {
+    setSSLLoading(true)
+    setSSLDetails(null)
+
+    try {
+      const response = await fetch(
+        `/api/v1/monitors/${monitorID}/ssl`,
+      )
+      if (!response.ok) {
+        throw new Error(`SSL HTTP ${response.status}`)
+      }
+      setSSLDetails((await response.json()) as SSLDetails)
+    } catch {
+      setSSLDetails(null)
+    } finally {
+      setSSLLoading(false)
+    }
+  }
   async function loadMonitors() {
     try {
       const response = await fetch('/api/v1/monitors/status')
@@ -225,13 +259,18 @@ async function openMonitorDetails(
   setSelectedMonitor(monitor)
   setSelectedRange('24h')
   setResults([])
+  setSSLDetails(null)
   setStats(null)
   setChartPoints([])
 
-  await Promise.all([
+  const requests = [
     loadMonitorAnalytics(monitor.id, '24h'),
     loadRecentResults(monitor.id),
-  ])
+  ]
+  if (monitor.monitor_type === 'ssl') {
+    requests.push(loadSSLDetails(monitor.id))
+  }
+  await Promise.all(requests)
 }
 async function changeRange(range: TimeRange) {
   if (!selectedMonitor) {
@@ -695,6 +734,9 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   <option value="tcp">
                     TCP
                   </option>
+                  <option value="ssl">
+                    SSL Certificate
+                  </option>
                 </select>
               </label>
 
@@ -858,7 +900,7 @@ function buildResponseChart(data: MonitorChartPoint[]) {
               </div>
 
               <div>
-                <span>HTTP Code</span>
+                <span>{selectedMonitor.monitor_type === 'ssl' ? 'Certificate' : 'HTTP Code'}</span>
 
                 <strong>
                   {selectedMonitor.status_code ?? '—'}
@@ -875,6 +917,27 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                 </strong>
               </div>
             </div>
+
+            {selectedMonitor.monitor_type === 'ssl' && (
+              <section className="ssl-details">
+                <h3>SSL Certificate</h3>
+                {sslLoading && <div className="message">Checking certificate...</div>}
+                {!sslLoading && sslDetails && (
+                  <div className="ssl-detail-grid">
+                    <div><span>Status</span><strong className={`status-text ${sslDetails.status}`}>{sslDetails.status.toUpperCase()}</strong></div>
+                    <div><span>Certificate Subject</span><strong>{sslDetails.subject || '—'}</strong></div>
+                    <div><span>Issuer</span><strong>{sslDetails.issuer || '—'}</strong></div>
+                    <div><span>Valid From</span><strong>{sslDetails.not_before ? new Date(sslDetails.not_before).toLocaleString() : '—'}</strong></div>
+                    <div><span>Expires</span><strong>{sslDetails.not_after ? new Date(sslDetails.not_after).toLocaleString() : '—'}</strong></div>
+                    <div><span>Days Remaining</span><strong className={sslDetails.days_remaining <= 30 ? 'ssl-expiry-warning' : ''}>{sslDetails.days_remaining <= 0 ? 'Expired' : `${sslDetails.days_remaining} days`}</strong></div>
+                    <div><span>Certificate Valid</span><strong className={sslDetails.certificate_valid ? 'status-text up' : 'status-text down'}>{sslDetails.certificate_valid ? 'YES' : 'NO'}</strong></div>
+                    <div><span>Response Time</span><strong>{sslDetails.response_time_ms} ms</strong></div>
+                  </div>
+                )}
+                {!sslLoading && !sslDetails && <div className="message error">Certificate details unavailable.</div>}
+              </section>
+            )}
+
 <div className="monitor-insights">
   <div className="insight-card">
     <span>Uptime</span>
@@ -1226,6 +1289,9 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   </option>
                   <option value="tcp">
                     TCP
+                  </option>
+                  <option value="ssl">
+                    SSL Certificate
                   </option>
                 </select>
               </label>

@@ -3,15 +3,19 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
-	"github.com/serverwatch/serverwatch/server/internal/repository"
-	"github.com/serverwatch/serverwatch/server/internal/service"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+
+	monitorengine "github.com/serverwatch/serverwatch/server/internal/monitor"
+	"github.com/serverwatch/serverwatch/server/internal/repository"
+	"github.com/serverwatch/serverwatch/server/internal/service"
 )
 
 type MonitorHandler struct {
 	Repository *repository.MonitorRepository
+	SSLChecker *monitorengine.SSLChecker
 }
 
 func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +40,7 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch input.MonitorType {
-	case "http", "https", "tcp":
+	case "http", "https", "tcp", "ssl":
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": "unsupported monitor_type",
@@ -64,6 +68,12 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 			"error": "timeout_seconds must be between 1 and 60",
 		})
 		return
+	}
+	if input.MonitorType == "ssl" {
+		if _, err := monitorengine.ParseSSLAddress(input.Target); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
 	}
 
 	monitor, err := h.Repository.Create(r.Context(), input)
@@ -270,7 +280,7 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch input.MonitorType {
-	case "http", "https", "tcp":
+	case "http", "https", "tcp", "ssl":
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": "unsupported monitor_type",
@@ -290,6 +300,12 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 			"error": "timeout_seconds must be between 1 and 60",
 		})
 		return
+	}
+	if input.MonitorType == "ssl" {
+		if _, err := monitorengine.ParseSSLAddress(input.Target); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
 	}
 
 	monitor, err := h.Repository.Update(
@@ -313,6 +329,45 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, monitor)
+}
+
+func (h *MonitorHandler) SSL(w http.ResponseWriter, r *http.Request) {
+	id, err := parseMonitorID(r)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid monitor id"})
+		return
+	}
+	monitor, err := h.Repository.GetByID(r.Context(), id)
+	if errors.Is(err, repository.ErrMonitorNotFound) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "monitor not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get monitor"})
+		return
+	}
+	if monitor.MonitorType != "ssl" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "monitor is not an SSL monitor"})
+		return
+	}
+	checker := h.SSLChecker
+	if checker == nil {
+		checker = monitorengine.NewSSLChecker()
+	}
+	checked := checker.CheckCertificate(r.Context(), monitor)
+	response := struct {
+		MonitorID        int64     `json:"monitor_id"`
+		Status           string    `json:"status"`
+		ResponseTimeMS   int64     `json:"response_time_ms"`
+		Subject          string    `json:"subject"`
+		Issuer           string    `json:"issuer"`
+		NotBefore        time.Time `json:"not_before"`
+		NotAfter         time.Time `json:"not_after"`
+		DaysRemaining    int       `json:"days_remaining"`
+		CertificateValid bool      `json:"certificate_valid"`
+		Message          string    `json:"message"`
+	}{monitor.ID, checked.Result.Status, checked.Result.ResponseTimeMS, checked.Subject, checked.Issuer, checked.NotBefore, checked.NotAfter, checked.DaysRemaining, checked.CertificateValid, checked.Result.Message}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *MonitorHandler) Stats(w http.ResponseWriter, r *http.Request) {

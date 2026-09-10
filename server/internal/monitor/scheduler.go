@@ -14,6 +14,7 @@ type Scheduler struct {
 	Repository *repository.MonitorRepository
 	Checker    *HTTPChecker
 	TCPChecker *TCPChecker
+	SSLChecker *SSLChecker
 	Interval   time.Duration
 }
 
@@ -24,6 +25,7 @@ func NewScheduler(
 		Repository: repository,
 		Checker:    NewHTTPChecker(),
 		TCPChecker: NewTCPChecker(),
+		SSLChecker: NewSSLChecker(),
 		Interval:   5 * time.Second,
 	}
 }
@@ -97,6 +99,8 @@ func (s *Scheduler) runOnce(ctx context.Context) {
 				result = s.Checker.Check(ctx, monitorItem)
 			case "tcp":
 				result = s.TCPChecker.Check(ctx, monitorItem)
+			case "ssl":
+				result = s.SSLChecker.Check(ctx, monitorItem)
 			default:
 				log.Printf(
 					"monitor %d (%s): unsupported monitor type %q",

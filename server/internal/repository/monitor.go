@@ -201,7 +201,7 @@ func (r *MonitorRepository) ListDue(
 		) last_result ON TRUE
 		WHERE
 			m.enabled = TRUE
-			AND m.monitor_type IN ('http', 'https', 'tcp')
+			AND m.monitor_type IN ('http', 'https', 'tcp', 'ssl')
 			AND (
 				last_result.checked_at IS NULL
 				OR last_result.checked_at <=
