@@ -16,6 +16,28 @@ import (
 type MonitorHandler struct {
 	Repository *repository.MonitorRepository
 	SSLChecker *monitorengine.SSLChecker
+	DNSChecker *monitorengine.DNSChecker
+}
+
+func validateDNSConfig(input *service.MonitorConfig, target string) error {
+	if _, err := monitorengine.ParseDNSTarget(target); err != nil {
+		return err
+	}
+	if input == nil {
+		return errors.New("DNS config with record_type is required")
+	}
+	input.RecordType = strings.ToUpper(strings.TrimSpace(input.RecordType))
+	if !monitorengine.IsSupportedDNSRecordType(input.RecordType) {
+		return errors.New("unsupported DNS record_type; use A, AAAA, CNAME, MX, NS, or TXT")
+	}
+	trimmed := make([]string, 0, len(input.ExpectedValues))
+	for _, value := range input.ExpectedValues {
+		if value = strings.TrimSpace(value); value != "" {
+			trimmed = append(trimmed, value)
+		}
+	}
+	input.ExpectedValues = trimmed
+	return nil
 }
 
 func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +62,7 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch input.MonitorType {
-	case "http", "https", "tcp", "ssl", "ping":
+	case "http", "https", "tcp", "ssl", "ping", "dns":
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": "unsupported monitor_type",
@@ -77,6 +99,12 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.MonitorType == "ping" {
 		if _, err := monitorengine.ParsePingTarget(input.Target); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+	}
+	if input.MonitorType == "dns" {
+		if err := validateDNSConfig(input.Config, input.Target); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		}
@@ -286,7 +314,7 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch input.MonitorType {
-	case "http", "https", "tcp", "ssl", "ping":
+	case "http", "https", "tcp", "ssl", "ping", "dns":
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": "unsupported monitor_type",
@@ -315,6 +343,12 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.MonitorType == "ping" {
 		if _, err := monitorengine.ParsePingTarget(input.Target); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+	}
+	if input.MonitorType == "dns" {
+		if err := validateDNSConfig(input.Config, input.Target); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		}
@@ -380,6 +414,44 @@ func (h *MonitorHandler) SSL(w http.ResponseWriter, r *http.Request) {
 		Message          string    `json:"message"`
 	}{monitor.ID, checked.Result.Status, checked.Result.ResponseTimeMS, checked.Subject, checked.Issuer, checked.NotBefore, checked.NotAfter, checked.DaysRemaining, checked.CertificateValid, checked.Result.Message}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *MonitorHandler) DNS(w http.ResponseWriter, r *http.Request) {
+	id, err := parseMonitorID(r)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid monitor id"})
+		return
+	}
+	monitor, err := h.Repository.GetByID(r.Context(), id)
+	if errors.Is(err, repository.ErrMonitorNotFound) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "monitor not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get monitor"})
+		return
+	}
+	if monitor.MonitorType != "dns" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "monitor is not a DNS monitor"})
+		return
+	}
+	checker := h.DNSChecker
+	if checker == nil {
+		checker = monitorengine.NewDNSChecker()
+	}
+	checked := checker.Check(r.Context(), monitor)
+	writeJSON(w, http.StatusOK, struct {
+		MonitorID      int64     `json:"monitor_id"`
+		RecordType     string    `json:"record_type"`
+		Target         string    `json:"target"`
+		Records        []string  `json:"records"`
+		ExpectedValues []string  `json:"expected_values"`
+		Matched        bool      `json:"matched"`
+		Status         string    `json:"status"`
+		LastCheckedAt  time.Time `json:"last_checked_at"`
+		ResponseTimeMS int64     `json:"response_time_ms"`
+		Message        string    `json:"message"`
+	}{monitor.ID, checked.RecordType, monitor.Target, checked.Records, checked.Expected, checked.Matched, checked.Result.Status, time.Now(), checked.Result.ResponseTimeMS, checked.Result.Message})
 }
 
 func (h *MonitorHandler) Stats(w http.ResponseWriter, r *http.Request) {

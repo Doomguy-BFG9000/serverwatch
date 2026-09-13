@@ -1,0 +1,1 @@
+ALTER TABLE monitors ADD COLUMN IF NOT EXISTS config JSONB NOT NULL DEFAULT '{}'::jsonb;

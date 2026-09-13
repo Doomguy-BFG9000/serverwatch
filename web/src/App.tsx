@@ -15,6 +15,11 @@ type MonitorStatus = {
   last_checked_at?: string
   interval_seconds: number
   timeout_seconds: number
+  config?: MonitorConfig
+}
+type MonitorConfig = {
+  record_type?: string
+  expected_values?: string[]
 }
 
 type MonitorResult = {
@@ -46,6 +51,16 @@ type NewMonitor = {
   target: string
   interval_seconds: number
   timeout_seconds: number
+  config: MonitorConfig
+}
+type DNSDetails = {
+  record_type: string
+  target: string
+  records: string[]
+  expected_values: string[]
+  matched: boolean
+  response_time_ms: number
+  message: string
 }
 type MonitorStats = {
   monitor_id: number
@@ -76,6 +91,7 @@ const emptyMonitor: NewMonitor = {
   target: '',
   interval_seconds: 60,
   timeout_seconds: 10,
+  config: { record_type: 'A', expected_values: [] },
 }
 
 function App() {
@@ -97,6 +113,8 @@ function App() {
   const [resultsLoading, setResultsLoading] = useState(false)
   const [sslDetails, setSSLDetails] = useState<SSLDetails | null>(null)
   const [sslLoading, setSSLLoading] = useState(false)
+  const [dnsDetails, setDNSDetails] = useState<DNSDetails | null>(null)
+  const [dnsLoading, setDNSLoading] = useState(false)
 
   const [chartPoints, setChartPoints] =
     useState<MonitorChartPoint[]>([])
@@ -195,6 +213,17 @@ function App() {
       setSSLLoading(false)
     }
   }
+  async function loadDNSDetails(monitorID: number) {
+    setDNSLoading(true)
+    setDNSDetails(null)
+    try {
+      const response = await fetch(`/api/v1/monitors/${monitorID}/dns`)
+      if (!response.ok) throw new Error(`DNS HTTP ${response.status}`)
+      setDNSDetails((await response.json()) as DNSDetails)
+    } catch {
+      setDNSDetails(null)
+    } finally { setDNSLoading(false) }
+  }
   async function loadMonitors() {
     try {
       const response = await fetch('/api/v1/monitors/status')
@@ -277,6 +306,7 @@ async function openMonitorDetails(
   setSelectedRange('24h')
   setResults([])
   setSSLDetails(null)
+  setDNSDetails(null)
   setStats(null)
   setChartPoints([])
 
@@ -286,6 +316,9 @@ async function openMonitorDetails(
   ]
   if (monitor.monitor_type === 'ssl') {
     requests.push(loadSSLDetails(monitor.id))
+  }
+  if (monitor.monitor_type === 'dns') {
+    requests.push(loadDNSDetails(monitor.id))
   }
   await Promise.all(requests)
 }
@@ -315,6 +348,7 @@ async function changeRange(range: TimeRange) {
             interval_seconds: monitor.interval_seconds,
             timeout_seconds: monitor.timeout_seconds,
             enabled: !monitor.enabled,
+            config: monitor.config,
           }),
         },
       )
@@ -439,6 +473,7 @@ async function changeRange(range: TimeRange) {
             timeout_seconds:
               editingMonitor.timeout_seconds,
             enabled: editingMonitor.enabled,
+            config: editingMonitor.config,
           }),
         },
       )
@@ -769,6 +804,9 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   <option value="ping">
                     Ping
                   </option>
+                  <option value="dns">
+                    DNS
+                  </option>
                 </select>
               </label>
 
@@ -784,10 +822,18 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                       target: event.target.value,
                     })
                   }
-                  placeholder={newMonitor.monitor_type === 'ping' ? 'example.com or 192.168.1.1' : 'https://example.com'}
+                  placeholder={newMonitor.monitor_type === 'dns' ? 'example.com' : newMonitor.monitor_type === 'ping' ? 'example.com or 192.168.1.1' : 'https://example.com'}
                   required
                 />
+                {newMonitor.monitor_type === 'dns' && <small>DNS name only — no protocol or port. Status updates after the next scheduled check.</small>}
               </label>
+
+              {newMonitor.monitor_type === 'dns' && <>
+                <label>Record Type<select value={newMonitor.config.record_type || 'A'} onChange={(event) => setNewMonitor({...newMonitor, config: {...newMonitor.config, record_type: event.target.value}})}>
+                  {['A', 'AAAA', 'CNAME', 'MX', 'NS', 'TXT'].map((type) => <option key={type} value={type}>{type}</option>)}
+                </select></label>
+                <label>Expected Value <input type="text" value={(newMonitor.config.expected_values || []).join(', ')} onChange={(event) => setNewMonitor({...newMonitor, config: {...newMonitor.config, expected_values: event.target.value.split(',').map((value) => value.trim()).filter(Boolean)}})} placeholder="Optional — e.g. 203.0.113.10" /></label>
+              </>}
 
               <div className="form-row">
                 <label>
@@ -967,6 +1013,18 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   </div>
                 )}
                 {!sslLoading && !sslDetails && <div className="message error">Certificate details unavailable.</div>}
+              </section>
+            )}
+
+            {selectedMonitor.monitor_type === 'dns' && (
+              <section className="ssl-details">
+                <h3>DNS Records</h3>
+                <div className="ssl-detail-grid">
+                  <div><span>Record Type</span><strong>{selectedMonitor.config?.record_type || dnsDetails?.record_type || '—'}</strong></div>
+                  <div><span>Expected Value(s)</span><strong>{selectedMonitor.config?.expected_values?.join(', ') || 'Any successful record'}</strong></div>
+                  <div><span>Latest Records</span><strong>{dnsLoading ? 'Loading...' : dnsDetails?.records?.join(', ') || '—'}</strong></div>
+                  <div><span>Lookup Result</span><strong>{dnsDetails?.message || '—'}</strong></div>
+                </div>
               </section>
             )}
 
@@ -1328,6 +1386,9 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   <option value="ping">
                     Ping
                   </option>
+                  <option value="dns">
+                    DNS
+                  </option>
                 </select>
               </label>
 
@@ -1343,10 +1404,18 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                       target: event.target.value,
                     })
                   }
-                  placeholder={editingMonitor.monitor_type === 'ping' ? 'example.com or 192.168.1.1' : undefined}
+                  placeholder={editingMonitor.monitor_type === 'dns' ? 'example.com' : editingMonitor.monitor_type === 'ping' ? 'example.com or 192.168.1.1' : undefined}
                   required
                 />
+                {editingMonitor.monitor_type === 'dns' && <small>DNS name only — no protocol or port. Changes affect status on the next scheduled check.</small>}
               </label>
+
+              {editingMonitor.monitor_type === 'dns' && <>
+                <label>Record Type<select value={editingMonitor.config?.record_type || 'A'} onChange={(event) => setEditingMonitor({...editingMonitor, config: {...editingMonitor.config, record_type: event.target.value}})}>
+                  {['A', 'AAAA', 'CNAME', 'MX', 'NS', 'TXT'].map((type) => <option key={type} value={type}>{type}</option>)}
+                </select></label>
+                <label>Expected Value <input type="text" value={(editingMonitor.config?.expected_values || []).join(', ')} onChange={(event) => setEditingMonitor({...editingMonitor, config: {...editingMonitor.config, expected_values: event.target.value.split(',').map((value) => value.trim()).filter(Boolean)}})} placeholder="Optional — e.g. 203.0.113.10" /></label>
+              </>}
 
               <div className="form-row">
                 <label>

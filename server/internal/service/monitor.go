@@ -3,23 +3,30 @@ package service
 import "time"
 
 type Monitor struct {
-	ID              int64     `json:"id"`
-	Name            string    `json:"name"`
-	MonitorType     string    `json:"monitor_type"`
-	Target          string    `json:"target"`
-	IntervalSeconds int       `json:"interval_seconds"`
-	TimeoutSeconds  int       `json:"timeout_seconds"`
-	Enabled         bool      `json:"enabled"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              int64          `json:"id"`
+	Name            string         `json:"name"`
+	MonitorType     string         `json:"monitor_type"`
+	Target          string         `json:"target"`
+	Config          *MonitorConfig `json:"config,omitempty"`
+	IntervalSeconds int            `json:"interval_seconds"`
+	TimeoutSeconds  int            `json:"timeout_seconds"`
+	Enabled         bool           `json:"enabled"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+}
+
+type MonitorConfig struct {
+	RecordType     string   `json:"record_type,omitempty"`
+	ExpectedValues []string `json:"expected_values,omitempty"`
 }
 
 type CreateMonitorInput struct {
-	Name            string `json:"name"`
-	MonitorType     string `json:"monitor_type"`
-	Target          string `json:"target"`
-	IntervalSeconds int    `json:"interval_seconds"`
-	TimeoutSeconds  int    `json:"timeout_seconds"`
+	Name            string         `json:"name"`
+	MonitorType     string         `json:"monitor_type"`
+	Target          string         `json:"target"`
+	IntervalSeconds int            `json:"interval_seconds"`
+	TimeoutSeconds  int            `json:"timeout_seconds"`
+	Config          *MonitorConfig `json:"config,omitempty"`
 }
 type MonitorResult struct {
 	ID             int64     `json:"id"`
@@ -85,24 +92,26 @@ type AlertState struct {
 	SSLWarned7          bool
 }
 type MonitorStatus struct {
-	ID              int64      `json:"id"`
-	Name            string     `json:"name"`
-	MonitorType     string     `json:"monitor_type"`
-	Target          string     `json:"target"`
-	Enabled         bool       `json:"enabled"`
-	IntervalSeconds int        `json:"interval_seconds"`
-	TimeoutSeconds  int        `json:"timeout_seconds"`
-	Status          string     `json:"status"`
-	ResponseTimeMS  *int64     `json:"response_time_ms,omitempty"`
-	StatusCode      *int       `json:"status_code,omitempty"`
-	Message         string     `json:"message,omitempty"`
-	LastCheckedAt   *time.Time `json:"last_checked_at,omitempty"`
+	ID              int64          `json:"id"`
+	Name            string         `json:"name"`
+	MonitorType     string         `json:"monitor_type"`
+	Target          string         `json:"target"`
+	Config          *MonitorConfig `json:"config,omitempty"`
+	Enabled         bool           `json:"enabled"`
+	IntervalSeconds int            `json:"interval_seconds"`
+	TimeoutSeconds  int            `json:"timeout_seconds"`
+	Status          string         `json:"status"`
+	ResponseTimeMS  *int64         `json:"response_time_ms,omitempty"`
+	StatusCode      *int           `json:"status_code,omitempty"`
+	Message         string         `json:"message,omitempty"`
+	LastCheckedAt   *time.Time     `json:"last_checked_at,omitempty"`
 }
 type UpdateMonitorInput struct {
-	Name            string `json:"name"`
-	MonitorType     string `json:"monitor_type"`
-	Target          string `json:"target"`
-	IntervalSeconds int    `json:"interval_seconds"`
-	TimeoutSeconds  int    `json:"timeout_seconds"`
-	Enabled         bool   `json:"enabled"`
+	Name            string         `json:"name"`
+	MonitorType     string         `json:"monitor_type"`
+	Target          string         `json:"target"`
+	IntervalSeconds int            `json:"interval_seconds"`
+	TimeoutSeconds  int            `json:"timeout_seconds"`
+	Enabled         bool           `json:"enabled"`
+	Config          *MonitorConfig `json:"config,omitempty"`
 }

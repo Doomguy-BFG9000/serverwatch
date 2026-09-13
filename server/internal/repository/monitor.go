@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -16,28 +17,52 @@ type MonitorRepository struct {
 	DB *pgxpool.Pool
 }
 
+func encodeMonitorConfig(config *service.MonitorConfig) ([]byte, error) {
+	if config == nil {
+		return []byte(`{}`), nil
+	}
+	return json.Marshal(config)
+}
+
+func decodeMonitorConfig(raw []byte) *service.MonitorConfig {
+	if len(raw) == 0 || string(raw) == "{}" {
+		return nil
+	}
+	var config service.MonitorConfig
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return nil
+	}
+	return &config
+}
+
 func (r *MonitorRepository) Create(
 	ctx context.Context,
 	input service.CreateMonitorInput,
 ) (service.Monitor, error) {
 	var monitor service.Monitor
+	config, err := encodeMonitorConfig(input.Config)
+	if err != nil {
+		return monitor, err
+	}
 
-	err := r.DB.QueryRow(
+	err = r.DB.QueryRow(
 		ctx,
 		`
 		INSERT INTO monitors (
 			name,
 			monitor_type,
 			target,
+			config,
 			interval_seconds,
 			timeout_seconds
 		)
-		VALUES ($1, $2, $3, $4, $5)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING
 			id,
 			name,
 			monitor_type,
 			target,
+			config,
 			interval_seconds,
 			timeout_seconds,
 			enabled,
@@ -47,6 +72,7 @@ func (r *MonitorRepository) Create(
 		input.Name,
 		input.MonitorType,
 		input.Target,
+		config,
 		input.IntervalSeconds,
 		input.TimeoutSeconds,
 	).Scan(
@@ -54,6 +80,7 @@ func (r *MonitorRepository) Create(
 		&monitor.Name,
 		&monitor.MonitorType,
 		&monitor.Target,
+		&config,
 		&monitor.IntervalSeconds,
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
@@ -61,6 +88,7 @@ func (r *MonitorRepository) Create(
 		&monitor.UpdatedAt,
 	)
 
+	monitor.Config = decodeMonitorConfig(config)
 	return monitor, err
 }
 
@@ -75,6 +103,7 @@ func (r *MonitorRepository) List(
 			name,
 			monitor_type,
 			target,
+			config,
 			interval_seconds,
 			timeout_seconds,
 			enabled,
@@ -93,12 +122,14 @@ func (r *MonitorRepository) List(
 
 	for rows.Next() {
 		var monitor service.Monitor
+		var config []byte
 
 		if err := rows.Scan(
 			&monitor.ID,
 			&monitor.Name,
 			&monitor.MonitorType,
 			&monitor.Target,
+			&config,
 			&monitor.IntervalSeconds,
 			&monitor.TimeoutSeconds,
 			&monitor.Enabled,
@@ -107,6 +138,7 @@ func (r *MonitorRepository) List(
 		); err != nil {
 			return nil, err
 		}
+		monitor.Config = decodeMonitorConfig(config)
 
 		monitors = append(monitors, monitor)
 	}
@@ -119,6 +151,7 @@ func (r *MonitorRepository) GetByID(
 	id int64,
 ) (service.Monitor, error) {
 	var monitor service.Monitor
+	var config []byte
 
 	err := r.DB.QueryRow(
 		ctx,
@@ -128,6 +161,7 @@ func (r *MonitorRepository) GetByID(
 			name,
 			monitor_type,
 			target,
+			config,
 			interval_seconds,
 			timeout_seconds,
 			enabled,
@@ -142,12 +176,14 @@ func (r *MonitorRepository) GetByID(
 		&monitor.Name,
 		&monitor.MonitorType,
 		&monitor.Target,
+		&config,
 		&monitor.IntervalSeconds,
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
 		&monitor.CreatedAt,
 		&monitor.UpdatedAt,
 	)
+	monitor.Config = decodeMonitorConfig(config)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return service.Monitor{}, ErrMonitorNotFound
@@ -187,6 +223,7 @@ func (r *MonitorRepository) ListDue(
 			m.name,
 			m.monitor_type,
 			m.target,
+			m.config,
 			m.interval_seconds,
 			m.timeout_seconds,
 			m.enabled,
@@ -202,7 +239,7 @@ func (r *MonitorRepository) ListDue(
 		) last_result ON TRUE
 		WHERE
 			m.enabled = TRUE
-			AND m.monitor_type IN ('http', 'https', 'tcp', 'ssl', 'ping')
+			AND m.monitor_type IN ('http', 'https', 'tcp', 'ssl', 'ping', 'dns')
 			AND (
 				last_result.checked_at IS NULL
 				OR last_result.checked_at <=
@@ -226,12 +263,14 @@ func (r *MonitorRepository) ListDue(
 
 	for rows.Next() {
 		var monitor service.Monitor
+		var config []byte
 
 		if err := rows.Scan(
 			&monitor.ID,
 			&monitor.Name,
 			&monitor.MonitorType,
 			&monitor.Target,
+			&config,
 			&monitor.IntervalSeconds,
 			&monitor.TimeoutSeconds,
 			&monitor.Enabled,
@@ -240,6 +279,7 @@ func (r *MonitorRepository) ListDue(
 		); err != nil {
 			return nil, err
 		}
+		monitor.Config = decodeMonitorConfig(config)
 
 		monitors = append(monitors, monitor)
 	}
@@ -349,6 +389,7 @@ func (r *MonitorRepository) ListStatus(
 			m.name,
 			m.monitor_type,
 			m.target,
+			m.config,
 			m.enabled,
 			m.interval_seconds,
 			m.timeout_seconds,
@@ -382,12 +423,14 @@ func (r *MonitorRepository) ListStatus(
 
 	for rows.Next() {
 		var item service.MonitorStatus
+		var config []byte
 
 		if err := rows.Scan(
 			&item.ID,
 			&item.Name,
 			&item.MonitorType,
 			&item.Target,
+			&config,
 			&item.Enabled,
 			&item.IntervalSeconds,
 			&item.TimeoutSeconds,
@@ -399,6 +442,7 @@ func (r *MonitorRepository) ListStatus(
 		); err != nil {
 			return nil, err
 		}
+		item.Config = decodeMonitorConfig(config)
 
 		statuses = append(statuses, item)
 	}
@@ -463,8 +507,12 @@ func (r *MonitorRepository) Update(
 	input service.UpdateMonitorInput,
 ) (service.Monitor, error) {
 	var monitor service.Monitor
+	config, err := encodeMonitorConfig(input.Config)
+	if err != nil {
+		return monitor, err
+	}
 
-	err := r.DB.QueryRow(
+	err = r.DB.QueryRow(
 		ctx,
 		`
 		UPDATE monitors
@@ -472,9 +520,10 @@ func (r *MonitorRepository) Update(
 			name = $2,
 			monitor_type = $3,
 			target = $4,
-			interval_seconds = $5,
-			timeout_seconds = $6,
-			enabled = $7,
+			config = $5,
+			interval_seconds = $6,
+			timeout_seconds = $7,
+			enabled = $8,
 			updated_at = NOW()
 		WHERE id = $1
 		RETURNING
@@ -482,6 +531,7 @@ func (r *MonitorRepository) Update(
 			name,
 			monitor_type,
 			target,
+			config,
 			interval_seconds,
 			timeout_seconds,
 			enabled,
@@ -492,6 +542,7 @@ func (r *MonitorRepository) Update(
 		input.Name,
 		input.MonitorType,
 		input.Target,
+		config,
 		input.IntervalSeconds,
 		input.TimeoutSeconds,
 		input.Enabled,
@@ -500,12 +551,14 @@ func (r *MonitorRepository) Update(
 		&monitor.Name,
 		&monitor.MonitorType,
 		&monitor.Target,
+		&config,
 		&monitor.IntervalSeconds,
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
 		&monitor.CreatedAt,
 		&monitor.UpdatedAt,
 	)
+	monitor.Config = decodeMonitorConfig(config)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return service.Monitor{}, ErrMonitorNotFound

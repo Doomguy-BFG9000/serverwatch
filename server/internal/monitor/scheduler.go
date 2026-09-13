@@ -17,6 +17,7 @@ type Scheduler struct {
 	TCPChecker   *TCPChecker
 	SSLChecker   *SSLChecker
 	PingChecker  *PingChecker
+	DNSChecker   *DNSChecker
 	Interval     time.Duration
 	AlertService *alert.Service
 }
@@ -30,6 +31,7 @@ func NewScheduler(
 		TCPChecker:  NewTCPChecker(),
 		SSLChecker:  NewSSLChecker(),
 		PingChecker: NewPingChecker(),
+		DNSChecker:  NewDNSChecker(),
 		Interval:    5 * time.Second,
 	}
 }
@@ -110,6 +112,8 @@ func (s *Scheduler) runOnce(ctx context.Context) {
 				result = checked.Result
 			case "ping":
 				result = s.PingChecker.Check(ctx, monitorItem)
+			case "dns":
+				result = s.DNSChecker.Check(ctx, monitorItem).Result
 			default:
 				log.Printf(
 					"monitor %d (%s): unsupported monitor type %q",
