@@ -16,6 +16,7 @@ type Scheduler struct {
 	Checker      *HTTPChecker
 	TCPChecker   *TCPChecker
 	SSLChecker   *SSLChecker
+	PingChecker  *PingChecker
 	Interval     time.Duration
 	AlertService *alert.Service
 }
@@ -24,11 +25,12 @@ func NewScheduler(
 	repository *repository.MonitorRepository,
 ) *Scheduler {
 	return &Scheduler{
-		Repository: repository,
-		Checker:    NewHTTPChecker(),
-		TCPChecker: NewTCPChecker(),
-		SSLChecker: NewSSLChecker(),
-		Interval:   5 * time.Second,
+		Repository:  repository,
+		Checker:     NewHTTPChecker(),
+		TCPChecker:  NewTCPChecker(),
+		SSLChecker:  NewSSLChecker(),
+		PingChecker: NewPingChecker(),
+		Interval:    5 * time.Second,
 	}
 }
 
@@ -106,6 +108,8 @@ func (s *Scheduler) runOnce(ctx context.Context) {
 				checked := s.SSLChecker.CheckCertificate(ctx, monitorItem)
 				sslResult = &checked
 				result = checked.Result
+			case "ping":
+				result = s.PingChecker.Check(ctx, monitorItem)
 			default:
 				log.Printf(
 					"monitor %d (%s): unsupported monitor type %q",

@@ -647,7 +647,7 @@ function buildResponseChart(data: MonitorChartPoint[]) {
 
                     <div>
                       <h3>{monitor.name}</h3>
-                      <p>{monitor.target}</p>
+                      <p>{monitor.monitor_type.toUpperCase()} · {monitor.target}</p>
                     </div>
                   </div>
 
@@ -678,7 +678,7 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                     </div>
 
                     <div>
-                      <span>HTTP</span>
+                      <span>Code</span>
                       <strong>
                         {monitor.status_code ?? '—'}
                       </strong>
@@ -766,6 +766,9 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   <option value="ssl">
                     SSL Certificate
                   </option>
+                  <option value="ping">
+                    Ping
+                  </option>
                 </select>
               </label>
 
@@ -781,7 +784,7 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                       target: event.target.value,
                     })
                   }
-                  placeholder="https://example.com"
+                  placeholder={newMonitor.monitor_type === 'ping' ? 'example.com or 192.168.1.1' : 'https://example.com'}
                   required
                 />
               </label>
@@ -1212,7 +1215,7 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                     <div className="history-row history-header">
                       <span>Status</span>
                       <span>Response</span>
-                      <span>HTTP</span>
+                      <span>Code</span>
                       <span>Checked At</span>
                     </div>
 
@@ -1322,6 +1325,9 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   <option value="ssl">
                     SSL Certificate
                   </option>
+                  <option value="ping">
+                    Ping
+                  </option>
                 </select>
               </label>
 
@@ -1337,6 +1343,7 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                       target: event.target.value,
                     })
                   }
+                  placeholder={editingMonitor.monitor_type === 'ping' ? 'example.com or 192.168.1.1' : undefined}
                   required
                 />
               </label>

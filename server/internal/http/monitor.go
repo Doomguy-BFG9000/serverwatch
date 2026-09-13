@@ -40,7 +40,7 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch input.MonitorType {
-	case "http", "https", "tcp", "ssl":
+	case "http", "https", "tcp", "ssl", "ping":
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": "unsupported monitor_type",
@@ -71,6 +71,12 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.MonitorType == "ssl" {
 		if _, err := monitorengine.ParseSSLAddress(input.Target); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+	}
+	if input.MonitorType == "ping" {
+		if _, err := monitorengine.ParsePingTarget(input.Target); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		}
@@ -280,7 +286,7 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch input.MonitorType {
-	case "http", "https", "tcp", "ssl":
+	case "http", "https", "tcp", "ssl", "ping":
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": "unsupported monitor_type",
@@ -303,6 +309,12 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.MonitorType == "ssl" {
 		if _, err := monitorengine.ParseSSLAddress(input.Target); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+	}
+	if input.MonitorType == "ping" {
+		if _, err := monitorengine.ParsePingTarget(input.Target); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		}
