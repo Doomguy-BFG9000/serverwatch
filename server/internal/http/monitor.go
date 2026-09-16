@@ -14,9 +14,10 @@ import (
 )
 
 type MonitorHandler struct {
-	Repository *repository.MonitorRepository
-	SSLChecker *monitorengine.SSLChecker
-	DNSChecker *monitorengine.DNSChecker
+	Repository  *repository.MonitorRepository
+	SSLChecker  *monitorengine.SSLChecker
+	DNSChecker  *monitorengine.DNSChecker
+	PortChecker *monitorengine.PortChecker
 }
 
 func validateDNSConfig(input *service.MonitorConfig, target string) error {
@@ -37,6 +38,28 @@ func validateDNSConfig(input *service.MonitorConfig, target string) error {
 		}
 	}
 	input.ExpectedValues = trimmed
+	return nil
+}
+
+// validatePortConfig validates a multi-port monitor target and its explicitly
+// configured ports. Duplicate ports collapse into one entry and the stored list
+// is sorted ascending so checks and detail output stay deterministic.
+func validatePortConfig(input *service.MonitorConfig, target string) error {
+	if _, err := monitorengine.ParsePortTarget(target); err != nil {
+		return err
+	}
+
+	if input == nil {
+		return errors.New("port config with ports is required")
+	}
+
+	ports, err := monitorengine.NormalizePorts(input.Ports)
+	if err != nil {
+		return err
+	}
+
+	input.Ports = ports
+
 	return nil
 }
 
@@ -62,7 +85,7 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch input.MonitorType {
-	case "http", "https", "tcp", "ssl", "ping", "dns":
+	case "http", "https", "tcp", "ssl", "ping", "dns", "port":
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": "unsupported monitor_type",
@@ -105,6 +128,12 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.MonitorType == "dns" {
 		if err := validateDNSConfig(input.Config, input.Target); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+	}
+	if input.MonitorType == "port" {
+		if err := validatePortConfig(input.Config, input.Target); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		}
@@ -314,7 +343,7 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch input.MonitorType {
-	case "http", "https", "tcp", "ssl", "ping", "dns":
+	case "http", "https", "tcp", "ssl", "ping", "dns", "port":
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": "unsupported monitor_type",
@@ -349,6 +378,12 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.MonitorType == "dns" {
 		if err := validateDNSConfig(input.Config, input.Target); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+	}
+	if input.MonitorType == "port" {
+		if err := validatePortConfig(input.Config, input.Target); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		}
@@ -452,6 +487,49 @@ func (h *MonitorHandler) DNS(w http.ResponseWriter, r *http.Request) {
 		ResponseTimeMS int64     `json:"response_time_ms"`
 		Message        string    `json:"message"`
 	}{monitor.ID, checked.RecordType, monitor.Target, checked.Records, checked.Expected, checked.Matched, checked.Result.Status, time.Now(), checked.Result.ResponseTimeMS, checked.Result.Message})
+}
+
+// Ports reports a fresh on-demand multi-port check for a port monitor. Like the
+// existing SSL and DNS detail endpoints it runs a new check instead of reading
+// stored history; the scheduled results remain in monitor_results.
+func (h *MonitorHandler) Ports(w http.ResponseWriter, r *http.Request) {
+	id, err := parseMonitorID(r)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid monitor id"})
+		return
+	}
+	monitor, err := h.Repository.GetByID(r.Context(), id)
+	if errors.Is(err, repository.ErrMonitorNotFound) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "monitor not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get monitor"})
+		return
+	}
+	if monitor.MonitorType != "port" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "monitor is not a port monitor"})
+		return
+	}
+	checker := h.PortChecker
+	if checker == nil {
+		checker = monitorengine.NewPortChecker()
+	}
+	checked := checker.Check(r.Context(), monitor)
+	ports := checked.Ports
+	if ports == nil {
+		ports = []monitorengine.PortCheckResult{}
+	}
+	writeJSON(w, http.StatusOK, struct {
+		MonitorID      int64                           `json:"monitor_id"`
+		Target         string                          `json:"target"`
+		Status         string                          `json:"status"`
+		Ports          []monitorengine.PortCheckResult `json:"ports"`
+		Reachable      int                             `json:"reachable"`
+		Total          int                             `json:"total"`
+		ResponseTimeMS int64                           `json:"response_time_ms"`
+		Message        string                          `json:"message"`
+	}{monitor.ID, monitor.Target, checked.Result.Status, ports, checked.Reachable, checked.Total, checked.Result.ResponseTimeMS, checked.Result.Message})
 }
 
 func (h *MonitorHandler) Stats(w http.ResponseWriter, r *http.Request) {

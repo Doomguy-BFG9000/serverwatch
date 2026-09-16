@@ -15,6 +15,7 @@ type Scheduler struct {
 	Repository   *repository.MonitorRepository
 	Checker      *HTTPChecker
 	TCPChecker   *TCPChecker
+	PortChecker  *PortChecker
 	SSLChecker   *SSLChecker
 	PingChecker  *PingChecker
 	DNSChecker   *DNSChecker
@@ -29,6 +30,7 @@ func NewScheduler(
 		Repository:  repository,
 		Checker:     NewHTTPChecker(),
 		TCPChecker:  NewTCPChecker(),
+		PortChecker: NewPortChecker(),
 		SSLChecker:  NewSSLChecker(),
 		PingChecker: NewPingChecker(),
 		DNSChecker:  NewDNSChecker(),
@@ -98,23 +100,8 @@ func (s *Scheduler) runOnce(ctx context.Context) {
 				return
 			}
 
-			var result service.CreateMonitorResultInput
-			var sslResult *SSLCheckResult
-
-			switch monitorItem.MonitorType {
-			case "http", "https":
-				result = s.Checker.Check(ctx, monitorItem)
-			case "tcp":
-				result = s.TCPChecker.Check(ctx, monitorItem)
-			case "ssl":
-				checked := s.SSLChecker.CheckCertificate(ctx, monitorItem)
-				sslResult = &checked
-				result = checked.Result
-			case "ping":
-				result = s.PingChecker.Check(ctx, monitorItem)
-			case "dns":
-				result = s.DNSChecker.Check(ctx, monitorItem).Result
-			default:
+			result, sslResult, supported := s.check(ctx, monitorItem)
+			if !supported {
 				log.Printf(
 					"monitor %d (%s): unsupported monitor type %q",
 					monitorItem.ID,
@@ -162,4 +149,30 @@ func (s *Scheduler) runOnce(ctx context.Context) {
 	}
 
 	wg.Wait()
+}
+
+// check runs the checker registered for the monitor type. The boolean reports
+// whether a checker exists at all, which runOnce turns into the unsupported
+// monitor type log line.
+func (s *Scheduler) check(
+	ctx context.Context,
+	monitorItem service.Monitor,
+) (service.CreateMonitorResultInput, *SSLCheckResult, bool) {
+	switch monitorItem.MonitorType {
+	case "http", "https":
+		return s.Checker.Check(ctx, monitorItem), nil, true
+	case "tcp":
+		return s.TCPChecker.Check(ctx, monitorItem), nil, true
+	case "ssl":
+		checked := s.SSLChecker.CheckCertificate(ctx, monitorItem)
+		return checked.Result, &checked, true
+	case "ping":
+		return s.PingChecker.Check(ctx, monitorItem), nil, true
+	case "dns":
+		return s.DNSChecker.Check(ctx, monitorItem).Result, nil, true
+	case "port":
+		return s.PortChecker.Check(ctx, monitorItem).Result, nil, true
+	default:
+		return service.CreateMonitorResultInput{}, nil, false
+	}
 }

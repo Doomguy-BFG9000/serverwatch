@@ -60,3 +60,34 @@ Use the persistent `/etc/sysctl.d/99-serverwatch-ping.conf` configuration from
 the architecture document for the setting to survive reboot. Do not remove
 `NoNewPrivileges=true`, run ServerWatch as root, or add `CAP_NET_RAW` to the
 ServerWatch application.
+
+## Port monitor shows DOWN
+
+A `port` monitor reports `DOWN` when at least one configured port does not
+accept a TCP connection. The result message names the unreachable ports, and the
+monitor detail view shows per-port status, per-port latency, and a short reason
+such as `connection refused`, `timeout`, `DNS resolution failed`,
+`host unreachable`, or `unreachable`.
+
+Common causes:
+
+- the service is not listening on that port;
+- a firewall blocks the connection;
+- the host is unreachable from the ServerWatch server;
+- the configured port number is wrong (for example `8080` instead of `80`);
+- the connection timed out because the host silently drops packets;
+- the hostname could not be resolved.
+
+Check from the ServerWatch host:
+
+```sh
+getent hosts example.com
+nc -vz example.com 22
+```
+
+Port monitors need no shell, no external binary, no root access, and no Linux
+capability, so no installation step is required for this monitor type.
+
+A port being reachable only means a TCP connection could be established. It
+does not prove application-level correctness or that the service returns
+correct responses. For HTTP application behavior, use HTTP/HTTPS monitoring.

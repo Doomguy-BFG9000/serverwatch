@@ -18,6 +18,7 @@ type Monitor struct {
 type MonitorConfig struct {
 	RecordType     string   `json:"record_type,omitempty"`
 	ExpectedValues []string `json:"expected_values,omitempty"`
+	Ports          []int    `json:"ports,omitempty"`
 }
 
 type CreateMonitorInput struct {

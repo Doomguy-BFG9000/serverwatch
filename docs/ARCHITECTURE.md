@@ -111,3 +111,13 @@ systemd service and verifies that Ping works without weakening that security
 model. After configuring the host, restart the ServerWatch service through
 the normal operational procedure and confirm that a local Ping monitor moves
 from `DOWN` to `UP`.
+
+## Multi-port monitoring
+
+Port monitors check up to 20 explicitly configured TCP ports on one host using
+Go's standard `net` package (`net.Dialer.DialContext`), reusing the same
+connection helper as the plain TCP monitor. No shell, external binary, raw
+socket, or privileged operation is involved, so port monitoring requires no
+`CAP_NET_RAW`, no root, and no additional system package. Only ports the user
+explicitly configured are dialed: no ranges, subnets, automatic discovery, or
+service fingerprinting are part of this feature.

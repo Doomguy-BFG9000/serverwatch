@@ -12,6 +12,23 @@ import (
 
 const defaultTCPTimeout = 10 * time.Second
 
+// tcpDialer is the minimal dialing surface shared by the TCP and multi-port
+// checkers. It is satisfied by *net.Dialer, so both monitors keep using the
+// same standard-library connection logic while staying testable.
+type tcpDialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
+}
+
+// dialTCP opens one TCP connection and returns it to the caller. The caller
+// owns the returned connection and must close it.
+func dialTCP(ctx context.Context, dialer tcpDialer, address string) (net.Conn, error) {
+	if dialer == nil {
+		dialer = &net.Dialer{}
+	}
+
+	return dialer.DialContext(ctx, "tcp", address)
+}
+
 type TCPChecker struct {
 	Dialer net.Dialer
 }
@@ -44,7 +61,7 @@ func (c *TCPChecker) Check(
 	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	conn, err := c.Dialer.DialContext(checkCtx, "tcp", target)
+	conn, err := dialTCP(checkCtx, &c.Dialer, target)
 	elapsed := time.Since(started).Milliseconds()
 	if err != nil {
 		return service.CreateMonitorResultInput{

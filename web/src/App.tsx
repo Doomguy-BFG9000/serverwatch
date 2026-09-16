@@ -20,6 +20,7 @@ type MonitorStatus = {
 type MonitorConfig = {
   record_type?: string
   expected_values?: string[]
+  ports?: number[]
 }
 
 type MonitorResult = {
@@ -62,6 +63,22 @@ type DNSDetails = {
   response_time_ms: number
   message: string
 }
+type PortCheckResult = {
+  port: number
+  status: string
+  response_time_ms: number
+  message: string
+}
+type PortDetails = {
+  monitor_id: number
+  target: string
+  status: string
+  ports: PortCheckResult[]
+  reachable: number
+  total: number
+  response_time_ms: number
+  message: string
+}
 type MonitorStats = {
   monitor_id: number
   total_checks: number
@@ -94,6 +111,59 @@ const emptyMonitor: NewMonitor = {
   config: { record_type: 'A', expected_values: [] },
 }
 
+// parsePortsInput parses the comma-separated Ports field. Ports are normalized
+// to unique whole numbers sorted ascending; invalid entries are reported
+// instead of being dropped. The backend validates ports again.
+function parsePortsInput(value: string): {
+  ports: number[]
+  error: string
+} {
+  const ports: number[] = []
+
+  for (const entry of value.split(',')) {
+    const text = entry.trim()
+
+    if (text === '') {
+      return {
+        ports: [],
+        error:
+          'Enter one or more ports separated by commas, for example 22, 80, 443.',
+      }
+    }
+
+    if (!/^\d+$/.test(text)) {
+      return {
+        ports: [],
+        error: `"${text}" is not a valid port. Use whole numbers between 1 and 65535.`,
+      }
+    }
+
+    const port = Number(text)
+
+    if (port < 1 || port > 65535) {
+      return {
+        ports: [],
+        error: `Port ${text} is out of range. Ports must be between 1 and 65535.`,
+      }
+    }
+
+    ports.push(port)
+  }
+
+  const unique = Array.from(new Set(ports)).sort(
+    (left, right) => left - right,
+  )
+
+  if (unique.length > 20) {
+    return {
+      ports: [],
+      error: 'A port monitor supports at most 20 ports.',
+    }
+  }
+
+  return { ports: unique, error: '' }
+}
+
 function App() {
   const [monitors, setMonitors] = useState<MonitorStatus[]>([])
   const [loading, setLoading] = useState(true)
@@ -115,6 +185,10 @@ function App() {
   const [sslLoading, setSSLLoading] = useState(false)
   const [dnsDetails, setDNSDetails] = useState<DNSDetails | null>(null)
   const [dnsLoading, setDNSLoading] = useState(false)
+  const [portDetails, setPortDetails] = useState<PortDetails | null>(null)
+  const [portLoading, setPortLoading] = useState(false)
+  const [newPortsInput, setNewPortsInput] = useState('')
+  const [editPortsInput, setEditPortsInput] = useState('')
 
   const [chartPoints, setChartPoints] =
     useState<MonitorChartPoint[]>([])
@@ -224,6 +298,17 @@ function App() {
       setDNSDetails(null)
     } finally { setDNSLoading(false) }
   }
+  async function loadPortDetails(monitorID: number) {
+    setPortLoading(true)
+    setPortDetails(null)
+    try {
+      const response = await fetch(`/api/v1/monitors/${monitorID}/ports`)
+      if (!response.ok) throw new Error(`Ports HTTP ${response.status}`)
+      setPortDetails((await response.json()) as PortDetails)
+    } catch {
+      setPortDetails(null)
+    } finally { setPortLoading(false) }
+  }
   async function loadMonitors() {
     try {
       const response = await fetch('/api/v1/monitors/status')
@@ -297,6 +382,7 @@ function App() {
     setShowAddMonitor(false)
     setFormError('')
     setNewMonitor(emptyMonitor)
+    setNewPortsInput('')
   }
 
 async function openMonitorDetails(
@@ -307,6 +393,7 @@ async function openMonitorDetails(
   setResults([])
   setSSLDetails(null)
   setDNSDetails(null)
+  setPortDetails(null)
   setStats(null)
   setChartPoints([])
 
@@ -319,6 +406,9 @@ async function openMonitorDetails(
   }
   if (monitor.monitor_type === 'dns') {
     requests.push(loadDNSDetails(monitor.id))
+  }
+  if (monitor.monitor_type === 'port') {
+    requests.push(loadPortDetails(monitor.id))
   }
   await Promise.all(requests)
 }
@@ -412,13 +502,30 @@ async function changeRange(range: TimeRange) {
     setSaving(true)
     setFormError('')
 
+    let payload = newMonitor
+
+    if (newMonitor.monitor_type === 'port') {
+      const parsed = parsePortsInput(newPortsInput)
+
+      if (parsed.error) {
+        setFormError(parsed.error)
+        setSaving(false)
+        return
+      }
+
+      payload = {
+        ...newMonitor,
+        config: { ...newMonitor.config, ports: parsed.ports },
+      }
+    }
+
     try {
       const response = await fetch('/api/v1/monitors', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(newMonitor),
+        body: JSON.stringify(payload),
       })
 
       const data = await response.json()
@@ -431,6 +538,7 @@ async function changeRange(range: TimeRange) {
 
       setShowAddMonitor(false)
       setNewMonitor(emptyMonitor)
+      setNewPortsInput('')
 
       await loadMonitors()
     } catch (err) {
@@ -456,6 +564,20 @@ async function changeRange(range: TimeRange) {
     setEditSaving(true)
     setEditError('')
 
+    let config = editingMonitor.config
+
+    if (editingMonitor.monitor_type === 'port') {
+      const parsed = parsePortsInput(editPortsInput)
+
+      if (parsed.error) {
+        setEditError(parsed.error)
+        setEditSaving(false)
+        return
+      }
+
+      config = { ...config, ports: parsed.ports }
+    }
+
     try {
       const response = await fetch(
         `/api/v1/monitors/${editingMonitor.id}`,
@@ -473,7 +595,7 @@ async function changeRange(range: TimeRange) {
             timeout_seconds:
               editingMonitor.timeout_seconds,
             enabled: editingMonitor.enabled,
-            config: editingMonitor.config,
+            config,
           }),
         },
       )
@@ -682,7 +804,14 @@ function buildResponseChart(data: MonitorChartPoint[]) {
 
                     <div>
                       <h3>{monitor.name}</h3>
-                      <p>{monitor.monitor_type.toUpperCase()} · {monitor.target}</p>
+                      <p>
+                        {monitor.monitor_type.toUpperCase()} ·{' '}
+                        {monitor.target}
+                        {monitor.monitor_type === 'port' &&
+                        monitor.config?.ports?.length
+                          ? ` · ${monitor.config.ports.length} ports`
+                          : ''}
+                      </p>
                     </div>
                   </div>
 
@@ -807,6 +936,9 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   <option value="dns">
                     DNS
                   </option>
+                  <option value="port">
+                    Port
+                  </option>
                 </select>
               </label>
 
@@ -822,11 +954,19 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                       target: event.target.value,
                     })
                   }
-                  placeholder={newMonitor.monitor_type === 'dns' ? 'example.com' : newMonitor.monitor_type === 'ping' ? 'example.com or 192.168.1.1' : 'https://example.com'}
+                  placeholder={newMonitor.monitor_type === 'dns' ? 'example.com' : newMonitor.monitor_type === 'port' ? 'example.com' : newMonitor.monitor_type === 'ping' ? 'example.com or 192.168.1.1' : 'https://example.com'}
                   required
                 />
                 {newMonitor.monitor_type === 'dns' && <small>DNS name only — no protocol or port. Status updates after the next scheduled check.</small>}
+                {newMonitor.monitor_type === 'port' && <small>Host only — no protocol or port. Status updates after the next scheduled check.</small>}
               </label>
+
+              {newMonitor.monitor_type === 'port' && <>
+                <label>Ports
+                  <input type="text" value={newPortsInput} onChange={(event) => setNewPortsInput(event.target.value)} placeholder="22, 80, 443" />
+                  <small>Enter up to 20 TCP ports separated by commas. Individual ports only — ranges are not supported.</small>
+                </label>
+              </>}
 
               {newMonitor.monitor_type === 'dns' && <>
                 <label>Record Type<select value={newMonitor.config.record_type || 'A'} onChange={(event) => setNewMonitor({...newMonitor, config: {...newMonitor.config, record_type: event.target.value}})}>
@@ -978,10 +1118,12 @@ function buildResponseChart(data: MonitorChartPoint[]) {
               </div>
 
               <div>
-                <span>{selectedMonitor.monitor_type === 'ssl' ? 'Certificate' : 'HTTP Code'}</span>
+                <span>{selectedMonitor.monitor_type === 'ssl' ? 'Certificate' : selectedMonitor.monitor_type === 'port' ? 'Ports' : 'HTTP Code'}</span>
 
                 <strong>
-                  {selectedMonitor.status_code ?? '—'}
+                  {selectedMonitor.monitor_type === 'port'
+                    ? `${selectedMonitor.config?.ports?.length ?? 0} configured`
+                    : selectedMonitor.status_code ?? '—'}
                 </strong>
               </div>
 
@@ -1025,6 +1167,25 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   <div><span>Latest Records</span><strong>{dnsLoading ? 'Loading...' : dnsDetails?.records?.join(', ') || '—'}</strong></div>
                   <div><span>Lookup Result</span><strong>{dnsDetails?.message || '—'}</strong></div>
                 </div>
+              </section>
+            )}
+
+            {selectedMonitor.monitor_type === 'port' && (
+              <section className="ssl-details">
+                <h3>Configured Ports</h3>
+                <div className="ssl-detail-grid">
+                  <div><span>Configured</span><strong>{selectedMonitor.config?.ports?.join(', ') || '—'}</strong></div>
+                  <div><span>Reachable</span><strong>{portLoading ? 'Checking...' : portDetails ? `${portDetails.reachable}/${portDetails.total}` : '—'}</strong></div>
+                  <div><span>Latest Check</span><strong>{portDetails?.message || '—'}</strong></div>
+                  <div><span>Check Duration</span><strong>{portDetails ? `${portDetails.response_time_ms} ms` : '—'}</strong></div>
+                  {(portDetails?.ports || []).map((item) => (
+                    <div key={item.port}>
+                      <span>Port {item.port}</span>
+                      <strong className={`status-text ${item.status}`}>{item.status.toUpperCase()} · {item.response_time_ms} ms · {item.message}</strong>
+                    </div>
+                  ))}
+                </div>
+                <small>Per-port results come from a fresh check run when this panel opens; stored history stays on the scheduled checks.</small>
               </section>
             )}
 
@@ -1094,6 +1255,11 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                 onClick={() => {
                   setEditingMonitor(
                     selectedMonitor,
+                  )
+                  setEditPortsInput(
+                    (selectedMonitor.config?.ports || []).join(
+                      ', ',
+                    ),
                   )
                   setEditError('')
                 }}
@@ -1389,6 +1555,9 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   <option value="dns">
                     DNS
                   </option>
+                  <option value="port">
+                    Port
+                  </option>
                 </select>
               </label>
 
@@ -1404,11 +1573,19 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                       target: event.target.value,
                     })
                   }
-                  placeholder={editingMonitor.monitor_type === 'dns' ? 'example.com' : editingMonitor.monitor_type === 'ping' ? 'example.com or 192.168.1.1' : undefined}
+                  placeholder={editingMonitor.monitor_type === 'dns' ? 'example.com' : editingMonitor.monitor_type === 'port' ? 'example.com' : editingMonitor.monitor_type === 'ping' ? 'example.com or 192.168.1.1' : undefined}
                   required
                 />
                 {editingMonitor.monitor_type === 'dns' && <small>DNS name only — no protocol or port. Changes affect status on the next scheduled check.</small>}
+                {editingMonitor.monitor_type === 'port' && <small>Host only — no protocol or port. Changes affect status on the next scheduled check.</small>}
               </label>
+
+              {editingMonitor.monitor_type === 'port' && <>
+                <label>Ports
+                  <input type="text" value={editPortsInput} onChange={(event) => setEditPortsInput(event.target.value)} placeholder="22, 80, 443" />
+                  <small>Enter up to 20 TCP ports separated by commas. Individual ports only — ranges are not supported. Changes affect status on the next scheduled check.</small>
+                </label>
+              </>}
 
               {editingMonitor.monitor_type === 'dns' && <>
                 <label>Record Type<select value={editingMonitor.config?.record_type || 'A'} onChange={(event) => setEditingMonitor({...editingMonitor, config: {...editingMonitor.config, record_type: event.target.value}})}>

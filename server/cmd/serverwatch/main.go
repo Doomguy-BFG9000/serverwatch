@@ -50,9 +50,10 @@ func main() {
 	go monitorScheduler.Run(schedulerCtx)
 
 	monitorHandler := &httpapi.MonitorHandler{
-		Repository: monitorRepository,
-		SSLChecker: monitorengine.NewSSLChecker(),
-		DNSChecker: monitorengine.NewDNSChecker(),
+		Repository:  monitorRepository,
+		SSLChecker:  monitorengine.NewSSLChecker(),
+		DNSChecker:  monitorengine.NewDNSChecker(),
+		PortChecker: monitorengine.NewPortChecker(),
 	}
 	alertHandler := &httpapi.AlertHandler{Config: cfg.AlertEmail}
 
@@ -69,6 +70,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/monitors/{id}/results", monitorHandler.Results)
 	mux.HandleFunc("GET /api/v1/monitors/{id}/ssl", monitorHandler.SSL)
 	mux.HandleFunc("GET /api/v1/monitors/{id}/dns", monitorHandler.DNS)
+	mux.HandleFunc("GET /api/v1/monitors/{id}/ports", monitorHandler.Ports)
 	mux.HandleFunc("PUT /api/v1/monitors/{id}", monitorHandler.Update)
 	mux.HandleFunc(
 		"GET /api/v1/monitors/{id}/stats",

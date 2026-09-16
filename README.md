@@ -59,3 +59,17 @@ retains `NoNewPrivileges=true`; configure Linux unprivileged ICMP with
 [Ping monitoring architecture decision](docs/ARCHITECTURE.md#ping-monitoring)
 and [Ping troubleshooting](docs/TROUBLESHOOTING.md#ping-monitor-is-down-but-manual-ping-works)
 for validation and persistent host configuration.
+
+## Port monitors
+
+Multi-port monitors check several explicitly configured TCP ports on one host.
+The target is a hostname or IP address only (for example `server.example.com`,
+`192.168.1.10`, or `2001:db8::10`); ports are configured separately, for
+example `22, 80, 443`. Every configured port must accept a TCP connection for
+the monitor to report `UP`.
+
+This is monitoring, not scanning. ServerWatch never scans ranges, never
+discovers ports automatically, and only dials ports the user configured, with a
+maximum of 20 ports per monitor. See
+[Port monitoring](docs/CONFIGURATION.md#multi-port-monitoring) and
+[Port troubleshooting](docs/TROUBLESHOOTING.md#port-monitor-shows-down).
