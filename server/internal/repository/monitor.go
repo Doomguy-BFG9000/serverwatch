@@ -48,26 +48,45 @@ func (r *MonitorRepository) Create(
 	err = r.DB.QueryRow(
 		ctx,
 		`
-		INSERT INTO monitors (
-			name,
-			monitor_type,
-			target,
-			config,
-			interval_seconds,
-			timeout_seconds
+		WITH inserted AS (
+			INSERT INTO monitors (
+				name,
+				monitor_type,
+				target,
+				config,
+				interval_seconds,
+				timeout_seconds,
+				group_id
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			RETURNING
+				id,
+				name,
+				monitor_type,
+				target,
+				config,
+				interval_seconds,
+				timeout_seconds,
+				enabled,
+				group_id,
+				created_at,
+				updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING
-			id,
-			name,
-			monitor_type,
-			target,
-			config,
-			interval_seconds,
-			timeout_seconds,
-			enabled,
-			created_at,
-			updated_at
+		SELECT
+			inserted.id,
+			inserted.name,
+			inserted.monitor_type,
+			inserted.target,
+			inserted.config,
+			inserted.interval_seconds,
+			inserted.timeout_seconds,
+			inserted.enabled,
+			inserted.group_id,
+			COALESCE(monitor_groups.name, ''),
+			inserted.created_at,
+			inserted.updated_at
+		FROM inserted
+		LEFT JOIN monitor_groups ON monitor_groups.id = inserted.group_id
 		`,
 		input.Name,
 		input.MonitorType,
@@ -75,6 +94,7 @@ func (r *MonitorRepository) Create(
 		config,
 		input.IntervalSeconds,
 		input.TimeoutSeconds,
+		input.GroupID,
 	).Scan(
 		&monitor.ID,
 		&monitor.Name,
@@ -84,11 +104,16 @@ func (r *MonitorRepository) Create(
 		&monitor.IntervalSeconds,
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
+		&monitor.GroupID,
+		&monitor.GroupName,
 		&monitor.CreatedAt,
 		&monitor.UpdatedAt,
 	)
 
 	monitor.Config = decodeMonitorConfig(config)
+	if isForeignKeyViolation(err) {
+		return service.Monitor{}, ErrGroupNotFound
+	}
 	return monitor, err
 }
 
@@ -99,18 +124,21 @@ func (r *MonitorRepository) List(
 		ctx,
 		`
 		SELECT
-			id,
-			name,
-			monitor_type,
-			target,
-			config,
-			interval_seconds,
-			timeout_seconds,
-			enabled,
-			created_at,
-			updated_at
-		FROM monitors
-		ORDER BY id DESC
+			m.id,
+			m.name,
+			m.monitor_type,
+			m.target,
+			m.config,
+			m.interval_seconds,
+			m.timeout_seconds,
+			m.enabled,
+			m.group_id,
+			COALESCE(monitor_groups.name, ''),
+			m.created_at,
+			m.updated_at
+		FROM monitors m
+		LEFT JOIN monitor_groups ON monitor_groups.id = m.group_id
+		ORDER BY m.id DESC
 		`,
 	)
 	if err != nil {
@@ -133,6 +161,8 @@ func (r *MonitorRepository) List(
 			&monitor.IntervalSeconds,
 			&monitor.TimeoutSeconds,
 			&monitor.Enabled,
+			&monitor.GroupID,
+			&monitor.GroupName,
 			&monitor.CreatedAt,
 			&monitor.UpdatedAt,
 		); err != nil {
@@ -157,18 +187,21 @@ func (r *MonitorRepository) GetByID(
 		ctx,
 		`
 		SELECT
-			id,
-			name,
-			monitor_type,
-			target,
-			config,
-			interval_seconds,
-			timeout_seconds,
-			enabled,
-			created_at,
-			updated_at
-		FROM monitors
-		WHERE id = $1
+			m.id,
+			m.name,
+			m.monitor_type,
+			m.target,
+			m.config,
+			m.interval_seconds,
+			m.timeout_seconds,
+			m.enabled,
+			m.group_id,
+			COALESCE(monitor_groups.name, ''),
+			m.created_at,
+			m.updated_at
+		FROM monitors m
+		LEFT JOIN monitor_groups ON monitor_groups.id = m.group_id
+		WHERE m.id = $1
 		`,
 		id,
 	).Scan(
@@ -180,6 +213,8 @@ func (r *MonitorRepository) GetByID(
 		&monitor.IntervalSeconds,
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
+		&monitor.GroupID,
+		&monitor.GroupName,
 		&monitor.CreatedAt,
 		&monitor.UpdatedAt,
 	)
@@ -211,47 +246,53 @@ func (r *MonitorRepository) Delete(
 
 	return nil
 }
+
+// listDueQuery intentionally does not join or filter on monitor_groups.
+// Grouping is metadata only, and every due monitor (grouped or ungrouped) must
+// remain eligible for scheduler dispatch.
+const listDueQuery = `
+	SELECT
+		m.id,
+		m.name,
+		m.monitor_type,
+		m.target,
+		m.config,
+		m.interval_seconds,
+		m.timeout_seconds,
+		m.enabled,
+		m.created_at,
+		m.updated_at
+	FROM monitors m
+	LEFT JOIN LATERAL (
+		SELECT checked_at
+		FROM monitor_results
+		WHERE monitor_id = m.id
+		ORDER BY checked_at DESC
+		LIMIT 1
+	) last_result ON TRUE
+	WHERE
+		m.enabled = TRUE
+		AND m.monitor_type IN ('http', 'https', 'tcp', 'ssl', 'ping', 'dns', 'port')
+		AND (
+			last_result.checked_at IS NULL
+			OR last_result.checked_at <=
+				NOW() - (m.interval_seconds * INTERVAL '1 second')
+		)
+	ORDER BY
+		COALESCE(
+			last_result.checked_at,
+			'1970-01-01 00:00:00+00'::timestamptz
+		) ASC
+	LIMIT $1
+`
+
 func (r *MonitorRepository) ListDue(
 	ctx context.Context,
 	limit int,
 ) ([]service.Monitor, error) {
 	rows, err := r.DB.Query(
 		ctx,
-		`
-		SELECT
-			m.id,
-			m.name,
-			m.monitor_type,
-			m.target,
-			m.config,
-			m.interval_seconds,
-			m.timeout_seconds,
-			m.enabled,
-			m.created_at,
-			m.updated_at
-		FROM monitors m
-		LEFT JOIN LATERAL (
-			SELECT checked_at
-			FROM monitor_results
-			WHERE monitor_id = m.id
-			ORDER BY checked_at DESC
-			LIMIT 1
-		) last_result ON TRUE
-		WHERE
-			m.enabled = TRUE
-			AND m.monitor_type IN ('http', 'https', 'tcp', 'ssl', 'ping', 'dns', 'port')
-			AND (
-				last_result.checked_at IS NULL
-				OR last_result.checked_at <=
-					NOW() - (m.interval_seconds * INTERVAL '1 second')
-			)
-		ORDER BY
-			COALESCE(
-				last_result.checked_at,
-				'1970-01-01 00:00:00+00'::timestamptz
-			) ASC
-		LIMIT $1
-		`,
+		listDueQuery,
 		limit,
 	)
 	if err != nil {
@@ -397,8 +438,11 @@ func (r *MonitorRepository) ListStatus(
 			lr.response_time_ms,
 			lr.status_code,
 			COALESCE(lr.message, ''),
-			lr.checked_at
+			lr.checked_at,
+			m.group_id,
+			COALESCE(monitor_groups.name, '')
 		FROM monitors m
+		LEFT JOIN monitor_groups ON monitor_groups.id = m.group_id
 		LEFT JOIN LATERAL (
 			SELECT
 				status,
@@ -439,6 +483,8 @@ func (r *MonitorRepository) ListStatus(
 			&item.StatusCode,
 			&item.Message,
 			&item.LastCheckedAt,
+			&item.GroupID,
+			&item.GroupName,
 		); err != nil {
 			return nil, err
 		}
@@ -515,28 +561,50 @@ func (r *MonitorRepository) Update(
 	err = r.DB.QueryRow(
 		ctx,
 		`
-		UPDATE monitors
-		SET
-			name = $2,
-			monitor_type = $3,
-			target = $4,
-			config = $5,
-			interval_seconds = $6,
-			timeout_seconds = $7,
-			enabled = $8,
-			updated_at = NOW()
-		WHERE id = $1
-		RETURNING
-			id,
-			name,
-			monitor_type,
-			target,
-			config,
-			interval_seconds,
-			timeout_seconds,
-			enabled,
-			created_at,
-			updated_at
+		WITH updated AS (
+			UPDATE monitors
+			SET
+				name = $2,
+				monitor_type = $3,
+				target = $4,
+				config = $5,
+				interval_seconds = $6,
+				timeout_seconds = $7,
+				enabled = $8,
+				group_id = CASE
+					WHEN $9 THEN $10::bigint
+					ELSE group_id
+				END,
+				updated_at = NOW()
+			WHERE id = $1
+			RETURNING
+				id,
+				name,
+				monitor_type,
+				target,
+				config,
+				interval_seconds,
+				timeout_seconds,
+				enabled,
+				group_id,
+				created_at,
+				updated_at
+		)
+		SELECT
+			updated.id,
+			updated.name,
+			updated.monitor_type,
+			updated.target,
+			updated.config,
+			updated.interval_seconds,
+			updated.timeout_seconds,
+			updated.enabled,
+			updated.group_id,
+			COALESCE(monitor_groups.name, ''),
+			updated.created_at,
+			updated.updated_at
+		FROM updated
+		LEFT JOIN monitor_groups ON monitor_groups.id = updated.group_id
 		`,
 		id,
 		input.Name,
@@ -546,6 +614,8 @@ func (r *MonitorRepository) Update(
 		input.IntervalSeconds,
 		input.TimeoutSeconds,
 		input.Enabled,
+		input.GroupID.Set,
+		input.GroupID.Value,
 	).Scan(
 		&monitor.ID,
 		&monitor.Name,
@@ -555,6 +625,8 @@ func (r *MonitorRepository) Update(
 		&monitor.IntervalSeconds,
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
+		&monitor.GroupID,
+		&monitor.GroupName,
 		&monitor.CreatedAt,
 		&monitor.UpdatedAt,
 	)
@@ -562,6 +634,9 @@ func (r *MonitorRepository) Update(
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return service.Monitor{}, ErrMonitorNotFound
+	}
+	if isForeignKeyViolation(err) {
+		return service.Monitor{}, ErrGroupNotFound
 	}
 
 	return monitor, err

@@ -87,3 +87,39 @@ completed scheduled check, so it can lag by roughly one monitoring interval.
 ServerWatch does not run an immediate check after an edit, and the next
 scheduled check uses the new port configuration and then evaluates DOWN and
 RECOVERY alerts.
+
+## Monitor groups
+
+Monitor groups organize monitors in the dashboard. A monitor may belong to zero
+or one group:
+
+```json
+{
+  "name": "Production API",
+  "monitor_type": "https",
+  "target": "https://api.example.com",
+  "group_id": 3
+}
+```
+
+Send `group_id` as `null` or omit it when creating a monitor to leave the
+monitor ungrouped. The group API is:
+
+Monitor updates use `PUT`. When updating a monitor, omit `group_id` to leave
+the current group unchanged, or send `"group_id": null` to explicitly remove
+the monitor from its group.
+
+```text
+GET    /api/v1/groups
+POST   /api/v1/groups
+PUT    /api/v1/groups/{id}
+DELETE /api/v1/groups/{id}
+```
+
+Group names are required, trimmed, limited to 100 characters, and unique
+case-insensitively. Deleting a group does not delete its monitors; assigned
+monitors become ungrouped.
+
+Groups are organizational only. They do not change monitor intervals,
+timeouts, checker behavior, scheduler dispatch, or alerting. Dashboard group
+filtering only changes which monitors are visible.

@@ -1,6 +1,9 @@
 package service
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Monitor struct {
 	ID              int64          `json:"id"`
@@ -11,6 +14,8 @@ type Monitor struct {
 	IntervalSeconds int            `json:"interval_seconds"`
 	TimeoutSeconds  int            `json:"timeout_seconds"`
 	Enabled         bool           `json:"enabled"`
+	GroupID         *int64         `json:"group_id"`
+	GroupName       string         `json:"group_name"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 }
@@ -28,6 +33,7 @@ type CreateMonitorInput struct {
 	IntervalSeconds int            `json:"interval_seconds"`
 	TimeoutSeconds  int            `json:"timeout_seconds"`
 	Config          *MonitorConfig `json:"config,omitempty"`
+	GroupID         *int64         `json:"group_id"`
 }
 type MonitorResult struct {
 	ID             int64     `json:"id"`
@@ -106,7 +112,35 @@ type MonitorStatus struct {
 	StatusCode      *int           `json:"status_code,omitempty"`
 	Message         string         `json:"message,omitempty"`
 	LastCheckedAt   *time.Time     `json:"last_checked_at,omitempty"`
+	GroupID         *int64         `json:"group_id"`
+	GroupName       string         `json:"group_name"`
 }
+
+// OptionalInt64 distinguishes an omitted JSON field from an explicit null.
+// Monitor updates use it so older clients can preserve a monitor's group while
+// newer clients can explicitly remove the group with `"group_id": null`.
+type OptionalInt64 struct {
+	Set   bool
+	Value *int64
+}
+
+func (value *OptionalInt64) UnmarshalJSON(data []byte) error {
+	value.Set = true
+
+	if string(data) == "null" {
+		value.Value = nil
+		return nil
+	}
+
+	var parsed int64
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+
+	value.Value = &parsed
+	return nil
+}
+
 type UpdateMonitorInput struct {
 	Name            string         `json:"name"`
 	MonitorType     string         `json:"monitor_type"`
@@ -115,4 +149,5 @@ type UpdateMonitorInput struct {
 	TimeoutSeconds  int            `json:"timeout_seconds"`
 	Enabled         bool           `json:"enabled"`
 	Config          *MonitorConfig `json:"config,omitempty"`
+	GroupID         OptionalInt64  `json:"group_id"`
 }

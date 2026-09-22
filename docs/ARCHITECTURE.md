@@ -121,3 +121,15 @@ socket, or privileged operation is involved, so port monitoring requires no
 `CAP_NET_RAW`, no root, and no additional system package. Only ports the user
 explicitly configured are dialed: no ranges, subnets, automatic discovery, or
 service fingerprinting are part of this feature.
+
+## Monitor groups
+
+Monitor groups store organizational metadata in a separate `monitor_groups`
+table. The `monitors.group_id` reference is nullable and uses
+`ON DELETE SET NULL`, so deleting a group leaves every monitor intact and
+ungrouped.
+
+Groups are deliberately not part of the monitoring runtime. The scheduler's
+due-monitor query does not join or filter on groups, monitor checkers do not
+read group metadata, and alert transitions remain based only on monitor
+results. Group filtering in the dashboard is client-side presentation logic.

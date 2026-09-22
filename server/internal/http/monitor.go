@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -13,8 +14,20 @@ import (
 	"github.com/serverwatch/serverwatch/server/internal/service"
 )
 
+type MonitorStore interface {
+	Create(context.Context, service.CreateMonitorInput) (service.Monitor, error)
+	List(context.Context) ([]service.Monitor, error)
+	GetByID(context.Context, int64) (service.Monitor, error)
+	Delete(context.Context, int64) error
+	ListStatus(context.Context) ([]service.MonitorStatus, error)
+	ListResultsSince(context.Context, int64, int, int) ([]service.MonitorResult, error)
+	Update(context.Context, int64, service.UpdateMonitorInput) (service.Monitor, error)
+	GetStatsSince(context.Context, int64, int) (service.MonitorStats, error)
+	ListChartPoints(context.Context, int64, int, int) ([]service.MonitorChartPoint, error)
+}
+
 type MonitorHandler struct {
-	Repository  *repository.MonitorRepository
+	Repository  MonitorStore
 	SSLChecker  *monitorengine.SSLChecker
 	DNSChecker  *monitorengine.DNSChecker
 	PortChecker *monitorengine.PortChecker
@@ -83,6 +96,12 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if input.GroupID != nil && *input.GroupID <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid group id",
+		})
+		return
+	}
 
 	switch input.MonitorType {
 	case "http", "https", "tcp", "ssl", "ping", "dns", "port":
@@ -140,6 +159,12 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	monitor, err := h.Repository.Create(r.Context(), input)
+	if errors.Is(err, repository.ErrGroupNotFound) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "group not found",
+		})
+		return
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
 			"error": "failed to create monitor",
@@ -341,6 +366,12 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if input.GroupID.Set && input.GroupID.Value != nil && *input.GroupID.Value <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid group id",
+		})
+		return
+	}
 
 	switch input.MonitorType {
 	case "http", "https", "tcp", "ssl", "ping", "dns", "port":
@@ -398,6 +429,12 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, repository.ErrMonitorNotFound) {
 		writeJSON(w, http.StatusNotFound, map[string]any{
 			"error": "monitor not found",
+		})
+		return
+	}
+	if errors.Is(err, repository.ErrGroupNotFound) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "group not found",
 		})
 		return
 	}

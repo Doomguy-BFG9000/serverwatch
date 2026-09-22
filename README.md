@@ -73,3 +73,14 @@ discovers ports automatically, and only dials ports the user configured, with a
 maximum of 20 ports per monitor. See
 [Port monitoring](docs/CONFIGURATION.md#multi-port-monitoring) and
 [Port troubleshooting](docs/TROUBLESHOOTING.md#port-monitor-shows-down).
+
+## Monitor groups
+
+Monitor groups are an optional organizational feature. A monitor may belong to
+zero or one group, and groups have no effect on scheduling, checking, or
+alerting.
+
+Group names are trimmed, must be non-empty, are limited to 100 characters, and
+must be unique case-insensitively. Deleting a group never deletes its monitors;
+those monitors become ungrouped. The dashboard can filter the visible monitor
+list by group, Ungrouped, or All Groups without pausing or changing monitors.

@@ -91,3 +91,19 @@ capability, so no installation step is required for this monitor type.
 A port being reachable only means a TCP connection could be established. It
 does not prove application-level correctness or that the service returns
 correct responses. For HTTP application behavior, use HTTP/HTTPS monitoring.
+
+## Monitor group issues
+
+Group names are case-insensitively unique. Creating or renaming a group to a
+name that differs only by letter case from an existing group returns a conflict
+instead of changing the existing group.
+
+A monitor becoming ungrouped after a group is deleted is expected. Deleting a
+group does not delete any monitor, and the monitor's checks continue normally.
+Use the dashboard's `Ungrouped` filter to find those monitors and assign them
+to another group if needed.
+
+Groups do not pause monitors and do not affect scheduler, checker, or alert
+behavior. If a monitor's status is stale after editing its group, group
+assignment itself does not trigger an immediate check; wait for the next
+configured monitoring interval.

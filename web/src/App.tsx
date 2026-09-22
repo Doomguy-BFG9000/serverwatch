@@ -16,7 +16,17 @@ type MonitorStatus = {
   interval_seconds: number
   timeout_seconds: number
   config?: MonitorConfig
+  group_id?: number | null
+  group_name?: string
 }
+
+type Group = {
+  id: number
+  name: string
+  created_at: string
+  updated_at: string
+}
+
 type MonitorConfig = {
   record_type?: string
   expected_values?: string[]
@@ -53,6 +63,7 @@ type NewMonitor = {
   interval_seconds: number
   timeout_seconds: number
   config: MonitorConfig
+  group_id: number | null
 }
 type DNSDetails = {
   record_type: string
@@ -109,6 +120,7 @@ const emptyMonitor: NewMonitor = {
   interval_seconds: 60,
   timeout_seconds: 10,
   config: { record_type: 'A', expected_values: [] },
+  group_id: null,
 }
 
 // parsePortsInput parses the comma-separated Ports field. Ports are normalized
@@ -166,9 +178,25 @@ function parsePortsInput(value: string): {
 
 function App() {
   const [monitors, setMonitors] = useState<MonitorStatus[]>([])
+  const [groups, setGroups] = useState<Group[]>([])
+  const [groupFilter, setGroupFilter] = useState<
+    'all' | 'ungrouped' | number
+  >('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [alertStatus, setAlertStatus] = useState<AlertStatus | null>(null)
+
+  const [showGroupManager, setShowGroupManager] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [groupFormError, setGroupFormError] = useState('')
+  const [groupSaving, setGroupSaving] = useState(false)
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null)
+  const [editGroupName, setEditGroupName] = useState('')
+  const [editGroupError, setEditGroupError] = useState('')
+  const [editGroupSaving, setEditGroupSaving] = useState(false)
+  const [deletingGroup, setDeletingGroup] = useState<Group | null>(null)
+  const [deleteGroupSaving, setDeleteGroupSaving] = useState(false)
+  const [deleteGroupError, setDeleteGroupError] = useState('')
 
   const [showAddMonitor, setShowAddMonitor] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -332,6 +360,18 @@ function App() {
     }
   }
 
+  async function loadGroups() {
+    try {
+      const response = await fetch('/api/v1/groups')
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      setGroups((await response.json()) as Group[])
+    } catch {
+      // Keep the last known groups during a transient fetch failure.
+    }
+  }
+
   async function loadAlertStatus() {
     try {
       const response = await fetch('/api/v1/alerts/status')
@@ -344,9 +384,13 @@ function App() {
 
   useEffect(() => {
     loadMonitors()
+    loadGroups()
     loadAlertStatus()
 
-    const timer = window.setInterval(loadMonitors, 10000)
+    const timer = window.setInterval(() => {
+      loadMonitors()
+      loadGroups()
+    }, 10000)
 
     return () => window.clearInterval(timer)
   }, [])
@@ -365,6 +409,18 @@ function App() {
       ).length,
     }
   }, [monitors])
+
+  const filteredMonitors = useMemo(() => {
+    if (groupFilter === 'all') {
+      return monitors
+    }
+    if (groupFilter === 'ungrouped') {
+      return monitors.filter((monitor) => !monitor.group_id)
+    }
+    return monitors.filter(
+      (monitor) => monitor.group_id === groupFilter,
+    )
+  }, [monitors, groupFilter])
 
   function formatLastChecked(value?: string) {
     if (!value) {
@@ -494,6 +550,130 @@ async function changeRange(range: TimeRange) {
     }
   }
 
+  function closeGroupManager() {
+    if (groupSaving || editGroupSaving) {
+      return
+    }
+    setShowGroupManager(false)
+    setNewGroupName('')
+    setGroupFormError('')
+    setEditingGroup(null)
+    setEditGroupName('')
+    setEditGroupError('')
+  }
+
+  async function handleCreateGroup(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
+    setGroupSaving(true)
+    setGroupFormError('')
+
+    try {
+      const response = await fetch('/api/v1/groups', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: newGroupName }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`)
+      }
+
+      setNewGroupName('')
+      await loadGroups()
+    } catch (err) {
+      setGroupFormError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to create group',
+      )
+    } finally {
+      setGroupSaving(false)
+    }
+  }
+
+  async function handleRenameGroup(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
+
+    if (!editingGroup) {
+      return
+    }
+
+    setEditGroupSaving(true)
+    setEditGroupError('')
+
+    try {
+      const response = await fetch(
+        `/api/v1/groups/${editingGroup.id}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name: editGroupName }),
+        },
+      )
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`)
+      }
+
+      setEditingGroup(null)
+      setEditGroupName('')
+      await Promise.all([loadGroups(), loadMonitors()])
+    } catch (err) {
+      setEditGroupError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to rename group',
+      )
+    } finally {
+      setEditGroupSaving(false)
+    }
+  }
+
+  async function handleDeleteGroup() {
+    if (!deletingGroup) {
+      return
+    }
+
+    setDeleteGroupSaving(true)
+    setDeleteGroupError('')
+
+    try {
+      const response = await fetch(
+        `/api/v1/groups/${deletingGroup.id}`,
+        { method: 'DELETE' },
+      )
+
+      if (!response.ok && response.status !== 204) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      if (groupFilter === deletingGroup.id) {
+        setGroupFilter('all')
+      }
+      setDeletingGroup(null)
+      setDeleteGroupError('')
+      await Promise.all([loadGroups(), loadMonitors()])
+    } catch (err) {
+      setDeleteGroupError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to delete group',
+      )
+    } finally {
+      setDeleteGroupSaving(false)
+    }
+  }
+
   async function handleAddMonitor(
     event: FormEvent<HTMLFormElement>,
   ) {
@@ -596,6 +776,7 @@ async function changeRange(range: TimeRange) {
               editingMonitor.timeout_seconds,
             enabled: editingMonitor.enabled,
             config,
+            group_id: editingMonitor.group_id ?? null,
           }),
         },
       )
@@ -755,12 +936,44 @@ function buildResponseChart(data: MonitorChartPoint[]) {
               <p>Current infrastructure status</p>
             </div>
 
-            <button
-              type="button"
-              onClick={loadMonitors}
-            >
-              Refresh
-            </button>
+            <div className="section-header-actions">
+              <label className="group-filter">
+                <span>Group</span>
+                <select
+                  value={String(groupFilter)}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setGroupFilter(
+                      value === 'all' || value === 'ungrouped'
+                        ? value
+                        : Number(value),
+                    )
+                  }}
+                >
+                  <option value="all">All Groups</option>
+                  <option value="ungrouped">Ungrouped</option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setShowGroupManager(true)}
+              >
+                Manage Groups
+              </button>
+
+              <button
+                type="button"
+                onClick={loadMonitors}
+              >
+                Refresh
+              </button>
+            </div>
           </div>
 
           {loading && (
@@ -783,9 +996,17 @@ function buildResponseChart(data: MonitorChartPoint[]) {
               </div>
             )}
 
-          {!loading && monitors.length > 0 && (
+          {!loading &&
+            monitors.length > 0 &&
+            filteredMonitors.length === 0 && (
+              <div className="message">
+                No monitors match this group filter.
+              </div>
+            )}
+
+          {!loading && filteredMonitors.length > 0 && (
             <div className="monitor-list">
-              {monitors.map((monitor) => (
+              {filteredMonitors.map((monitor) => (
                 <article
                   className="monitor-card"
                   key={monitor.id}
@@ -803,7 +1024,18 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                     />
 
                     <div>
-                      <h3>{monitor.name}</h3>
+                      <div className="monitor-title-row">
+                        <h3>{monitor.name}</h3>
+                        <span
+                          className={
+                            monitor.group_name
+                              ? 'group-badge'
+                              : 'group-badge ungrouped'
+                          }
+                        >
+                          {monitor.group_name || 'Ungrouped'}
+                        </span>
+                      </div>
                       <p>
                         {monitor.monitor_type.toUpperCase()} ·{' '}
                         {monitor.target}
@@ -961,6 +1193,30 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                 {newMonitor.monitor_type === 'port' && <small>Host only — no protocol or port. Status updates after the next scheduled check.</small>}
               </label>
 
+              <label>
+                Group
+
+                <select
+                  value={newMonitor.group_id ?? ''}
+                  onChange={(event) =>
+                    setNewMonitor({
+                      ...newMonitor,
+                      group_id:
+                        event.target.value === ''
+                          ? null
+                          : Number(event.target.value),
+                    })
+                  }
+                >
+                  <option value="">Ungrouped</option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               {newMonitor.monitor_type === 'port' && <>
                 <label>Ports
                   <input type="text" value={newPortsInput} onChange={(event) => setNewPortsInput(event.target.value)} placeholder="22, 80, 443" />
@@ -1075,7 +1331,10 @@ function buildResponseChart(data: MonitorChartPoint[]) {
             <div className="modal-header">
               <div>
                 <h2>{selectedMonitor.name}</h2>
-                <p>{selectedMonitor.target}</p>
+                <p>
+                  {selectedMonitor.target} ·{' '}
+                  {selectedMonitor.group_name || 'Ungrouped'}
+                </p>
               </div>
 
               <button
@@ -1477,6 +1736,188 @@ function buildResponseChart(data: MonitorChartPoint[]) {
         </div>
       )}
 
+      {showGroupManager && (
+        <div className="modal-backdrop">
+          <div className="modal-card group-manager-modal">
+            <div className="modal-header">
+              <div>
+                <h2>Monitor Groups</h2>
+                <p>
+                  Groups organize monitors without changing how they are
+                  checked or alerted.
+                </p>
+              </div>
+
+              <button
+                className="close-button"
+                type="button"
+                onClick={closeGroupManager}
+              >
+                ×
+              </button>
+            </div>
+
+            <form
+              className="group-create-form"
+              onSubmit={handleCreateGroup}
+            >
+              <label>
+                New group name
+                <input
+                  type="text"
+                  value={newGroupName}
+                  onChange={(event) =>
+                    setNewGroupName(event.target.value)
+                  }
+                  placeholder="Production"
+                  required
+                />
+              </label>
+
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={groupSaving}
+              >
+                {groupSaving ? 'Adding...' : 'Add Group'}
+              </button>
+            </form>
+
+            {groupFormError && (
+              <div className="form-error">{groupFormError}</div>
+            )}
+
+            <p className="group-manager-note">
+              Group names are unique regardless of letter case and may be up
+              to 100 characters.
+            </p>
+
+            <div className="group-list">
+              {groups.length === 0 && (
+                <div className="message">
+                  No groups yet. Monitors remain valid and ungrouped.
+                </div>
+              )}
+
+              {groups.map((group) => (
+                <div className="group-row" key={group.id}>
+                  {editingGroup?.id === group.id ? (
+                    <form
+                      className="group-rename-form"
+                      onSubmit={handleRenameGroup}
+                    >
+                      <input
+                        type="text"
+                        value={editGroupName}
+                        onChange={(event) =>
+                          setEditGroupName(event.target.value)
+                        }
+                        autoFocus
+                        required
+                      />
+
+                      {editGroupError && (
+                        <div className="form-error">
+                          {editGroupError}
+                        </div>
+                      )}
+
+                      <div className="group-row-actions">
+                        <button
+                          type="button"
+                          disabled={editGroupSaving}
+                          onClick={() => {
+                            setEditingGroup(null)
+                            setEditGroupName('')
+                            setEditGroupError('')
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="primary-button"
+                          type="submit"
+                          disabled={editGroupSaving}
+                        >
+                          {editGroupSaving ? 'Saving...' : 'Save'}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <strong>{group.name}</strong>
+                      <div className="group-row-actions">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingGroup(group)
+                            setEditGroupName(group.name)
+                            setEditGroupError('')
+                          }}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          className="danger-button"
+                          type="button"
+                          onClick={() => {
+                            setDeletingGroup(group)
+                            setDeleteGroupError('')
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deletingGroup && (
+        <div className="modal-backdrop">
+          <div className="modal-card confirm-card">
+            <div className="modal-header">
+              <div>
+                <h2>Delete "{deletingGroup.name}"?</h2>
+                <p>
+                  Deleting this group does not delete its monitors. The
+                  monitors will become ungrouped.
+                </p>
+              </div>
+            </div>
+
+            {deleteGroupError && (
+              <div className="form-error">{deleteGroupError}</div>
+            )}
+
+            <div className="form-actions">
+              <button
+                type="button"
+                disabled={deleteGroupSaving}
+                onClick={() => {
+                  setDeletingGroup(null)
+                  setDeleteGroupError('')
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                disabled={deleteGroupSaving}
+                onClick={handleDeleteGroup}
+              >
+                {deleteGroupSaving ? 'Deleting...' : 'Delete Group'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editingMonitor && (
         <div className="modal-backdrop">
           <div className="modal-card">
@@ -1578,6 +2019,30 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                 />
                 {editingMonitor.monitor_type === 'dns' && <small>DNS name only — no protocol or port. Changes affect status on the next scheduled check.</small>}
                 {editingMonitor.monitor_type === 'port' && <small>Host only — no protocol or port. Changes affect status on the next scheduled check.</small>}
+              </label>
+
+              <label>
+                Group
+
+                <select
+                  value={editingMonitor.group_id ?? ''}
+                  onChange={(event) =>
+                    setEditingMonitor({
+                      ...editingMonitor,
+                      group_id:
+                        event.target.value === ''
+                          ? null
+                          : Number(event.target.value),
+                    })
+                  }
+                >
+                  <option value="">Ungrouped</option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               {editingMonitor.monitor_type === 'port' && <>

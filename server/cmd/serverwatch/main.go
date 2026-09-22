@@ -33,6 +33,9 @@ func main() {
 	monitorRepository := &repository.MonitorRepository{
 		DB: db,
 	}
+	groupRepository := &repository.GroupRepository{
+		DB: db,
+	}
 	monitorScheduler := monitorengine.NewScheduler(
 		monitorRepository,
 	)
@@ -55,6 +58,9 @@ func main() {
 		DNSChecker:  monitorengine.NewDNSChecker(),
 		PortChecker: monitorengine.NewPortChecker(),
 	}
+	groupHandler := &httpapi.GroupHandler{
+		Repository: groupRepository,
+	}
 	alertHandler := &httpapi.AlertHandler{Config: cfg.AlertEmail}
 
 	mux := http.NewServeMux()
@@ -62,6 +68,10 @@ func main() {
 	mux.HandleFunc("GET /health", healthHandler.Health)
 	mux.HandleFunc("GET /ready", healthHandler.Ready)
 	mux.HandleFunc("GET /api/v1/alerts/status", alertHandler.Status)
+	mux.HandleFunc("GET /api/v1/groups", groupHandler.List)
+	mux.HandleFunc("POST /api/v1/groups", groupHandler.Create)
+	mux.HandleFunc("PUT /api/v1/groups/{id}", groupHandler.Update)
+	mux.HandleFunc("DELETE /api/v1/groups/{id}", groupHandler.Delete)
 	mux.HandleFunc("POST /api/v1/monitors", monitorHandler.Create)
 	mux.HandleFunc("GET /api/v1/monitors", monitorHandler.List)
 	mux.HandleFunc("GET /api/v1/monitors/{id}", monitorHandler.Get)
