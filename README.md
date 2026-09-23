@@ -85,6 +85,23 @@ must be unique case-insensitively. Deleting a group never deletes its monitors;
 those monitors become ungrouped. The dashboard can filter the visible monitor
 list by group, Ungrouped, or All Groups without pausing or changing monitors.
 
+## Monitor search and sorting
+
+The dashboard lets you search the loaded monitor list and reorder it. Search is
+client-side and case-insensitive, ignores leading and trailing whitespace, and
+matches monitor names and targets. An empty search shows every monitor. Search
+composes with the existing group filter: monitors are first limited by the
+selected group, then by the search text, and then sorted.
+
+Sorting is also client-side and offers Name A → Z, Name Z → A, Status, Monitor
+type, Newest, and Oldest, plus a Default option that preserves the existing
+incoming order. Status sorting reuses the dashboard presentation state, so
+Disabled ranks after Maintenance, and both rank after the normal monitoring
+statuses. Search and sorting only change which monitors are visible and in what
+order; they never modify a monitor, change monitoring behavior, or affect
+scheduling, checkers, alerting, or maintenance. Selections are not persisted
+across a browser reload.
+
 ## Monitor maintenance mode
 
 Maintenance mode is a manual, per-monitor switch for planned work. While it is

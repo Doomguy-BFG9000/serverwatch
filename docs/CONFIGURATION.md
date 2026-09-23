@@ -124,6 +124,37 @@ Groups are organizational only. They do not change monitor intervals,
 timeouts, checker behavior, scheduler dispatch, or alerting. Dashboard group
 filtering only changes which monitors are visible.
 
+## Dashboard search and sorting
+
+The dashboard monitor list can be searched and reordered from the controls
+next to the group filter. Both features are client-side and operate only on the
+monitors already loaded by the browser; they add no API endpoint, database
+query, or migration.
+
+Search is case-insensitive and matches a monitor's name or target. Leading and
+trailing whitespace in the typed text is ignored, and an empty search behaves
+as no filter. Search composes with the group filter in a fixed order: the
+loaded monitors are first limited by the selected group (All Groups, Ungrouped,
+or a specific group), then filtered by the search text, and finally sorted.
+When monitors exist but none match, the dashboard shows a no-match message
+instead of the empty "no monitors configured" state, and it does not clear the
+search or change the selected group.
+
+The Sort control offers Default, Name A → Z, Name Z → A, Status, Monitor type,
+Newest, and Oldest. Default preserves the order the dashboard already used
+before search and sorting existed. Name sorting is case-insensitive; Monitor
+type sorting is case-insensitive ascending by `monitor_type`; Newest and Oldest
+use the monitor's `created_at` timestamp. Status sorting reuses the dashboard
+presentation state, where Disabled outranks Maintenance, which outranks the
+normal monitoring status, and orders monitors Down, Up, Pending/Unknown,
+Maintenance, then Disabled. Equal values fall back to monitor name and then
+monitor ID so ordering is deterministic.
+
+Search and sorting never modify a monitor record and do not affect intervals,
+timeouts, checker behavior, scheduler dispatch, alerting, maintenance, groups,
+or history. Search and sort selections are not persisted across a browser
+reload.
+
 ## Maintenance mode
 
 Maintenance mode is a manual, per-monitor switch for planned work. It is

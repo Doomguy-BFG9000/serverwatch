@@ -448,6 +448,7 @@ func (r *MonitorRepository) ListStatus(
 			lr.status_code,
 			COALESCE(lr.message, ''),
 			lr.checked_at,
+			m.created_at,
 			m.group_id,
 			COALESCE(monitor_groups.name, '')
 		FROM monitors m
@@ -493,6 +494,7 @@ func (r *MonitorRepository) ListStatus(
 			&item.StatusCode,
 			&item.Message,
 			&item.LastCheckedAt,
+			&item.CreatedAt,
 			&item.GroupID,
 			&item.GroupName,
 		); err != nil {

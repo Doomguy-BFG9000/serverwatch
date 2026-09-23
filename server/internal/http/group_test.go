@@ -199,6 +199,7 @@ func (store *fakeGroupMonitorStore) ListStatus(
 			IntervalSeconds: monitor.IntervalSeconds,
 			TimeoutSeconds:  monitor.TimeoutSeconds,
 			Status:          "pending",
+			CreatedAt:       monitor.CreatedAt,
 			GroupID:         monitor.GroupID,
 			GroupName:       monitor.GroupName,
 		})

@@ -114,6 +114,7 @@ type MonitorStatus struct {
 	StatusCode      *int           `json:"status_code,omitempty"`
 	Message         string         `json:"message,omitempty"`
 	LastCheckedAt   *time.Time     `json:"last_checked_at,omitempty"`
+	CreatedAt       time.Time      `json:"created_at"`
 	GroupID         *int64         `json:"group_id"`
 	GroupName       string         `json:"group_name"`
 }

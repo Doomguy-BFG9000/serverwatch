@@ -108,6 +108,21 @@ behavior. If a monitor's status is stale after editing its group, group
 assignment itself does not trigger an immediate check; wait for the next
 configured monitoring interval.
 
+## Monitor search returns no results
+
+The dashboard monitors list is filtered by the selected group first and then by
+the search text, so a monitor can be hidden either by the group filter or by
+the search. If every monitor disappears, check the Group control as well as the
+search box, and clear the search text to see the full group again. Search is
+case-insensitive and matches monitor names and targets only; it does not search
+groups, status, or history.
+
+`No monitors match your search.` means monitors exist but none match the
+current search (and group). `No monitors configured.` means no monitors exist
+at all. Search and sorting are display-only and never delete, pause, or modify
+monitors, and the selected search, sort, and group are not remembered after a
+browser reload.
+
 ## Maintenance mode
 
 Maintenance mode is manual and per-monitor. Entering maintenance pauses

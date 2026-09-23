@@ -134,6 +134,28 @@ due-monitor query does not join or filter on groups, monitor checkers do not
 read group metadata, and alert transitions remain based only on monitor
 results. Group filtering in the dashboard is client-side presentation logic.
 
+## Dashboard search and sorting
+
+Monitor search and sorting are frontend-only presentation features. The
+dashboard derives the visible list from the monitors it has already loaded: it
+applies the selected group filter, then the case-insensitive name/target
+search, then the selected sort, and renders the result. No search or sort
+endpoint exists, no SQL filtering is added, and no database index or migration
+is required.
+
+Sorting operates on a copied array so the loaded `monitors` state order is
+never mutated, and each explicit sort uses explicit tie-breakers ending in
+monitor ID for deterministic output. The default sort preserves the incoming
+order from `GET /api/v1/monitors/status`, which is already ordered by monitor
+ID descending. The status sort reuses the same presentation precedence as the
+rest of the dashboard (Disabled, then Maintenance, then the stored status), so
+search and sorting cannot change how a monitor's state is displayed.
+
+Because Newest and Oldest sort on the monitor's `created_at` timestamp, the
+status response exposes that field. This is additive and does not change any
+API semantics, scheduler dispatch, checker behavior, or alert logic; the
+timestamp is read-only data already stored on the monitor row.
+
 ## Monitor maintenance mode
 
 Maintenance mode is stored as a single `monitors.maintenance BOOLEAN NOT NULL

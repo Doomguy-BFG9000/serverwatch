@@ -14,6 +14,7 @@ type MonitorStatus = {
   status_code?: number
   message?: string
   last_checked_at?: string
+  created_at: string
   interval_seconds: number
   timeout_seconds: number
   config?: MonitorConfig
@@ -108,6 +109,15 @@ type MonitorChartPoint = {
 }
 
 type TimeRange = '1h' | '24h' | '7d' | '30d'
+type MonitorSort =
+  | 'default'
+  | 'name-asc'
+  | 'name-desc'
+  | 'status'
+  | 'type'
+  | 'newest'
+  | 'oldest'
+
 type AlertStatus = {
   email_enabled: boolean
   smtp_configured: boolean
@@ -122,6 +132,95 @@ const emptyMonitor: NewMonitor = {
   timeout_seconds: 10,
   config: { record_type: 'A', expected_values: [] },
   group_id: null,
+}
+
+// Case-insensitive collation for human-readable name and type sorting.
+const monitorNameCollator = new Intl.Collator(undefined, {
+  sensitivity: 'base',
+})
+
+// Ascending status-sort order reusing the existing presentation kinds. Disabled
+// (Paused) ranks last, Maintenance next, and normal states use the stored
+// status; any unrecognized status sorts deterministically after the known ones.
+const monitorStatusRank: Record<string, number> = {
+  down: 0,
+  up: 1,
+  pending: 2,
+  maintenance: 3,
+  paused: 4,
+}
+
+function monitorStatusRankValue(kind: string): number {
+  return monitorStatusRank[kind] ?? 5
+}
+
+function compareMonitorName(
+  left: MonitorStatus,
+  right: MonitorStatus,
+): number {
+  return (
+    monitorNameCollator.compare(left.name, right.name) ||
+    left.id - right.id
+  )
+}
+
+function compareMonitorCreatedAt(
+  left: MonitorStatus,
+  right: MonitorStatus,
+): number {
+  const leftTime = Date.parse(left.created_at)
+  const rightTime = Date.parse(right.created_at)
+  const leftValue = Number.isNaN(leftTime) ? 0 : leftTime
+  const rightValue = Number.isNaN(rightTime) ? 0 : rightTime
+
+  return leftValue - rightValue || left.id - right.id
+}
+
+// sortMonitors returns a sorted copy of the given collection so the original
+// monitors state order is never mutated. 'default' preserves the incoming API
+// order. Every explicit option falls back to monitor ID for stable tie-breaks.
+function sortMonitors(
+  monitors: MonitorStatus[],
+  sort: MonitorSort,
+  presentationKind: (monitor: MonitorStatus) => string,
+): MonitorStatus[] {
+  if (sort === 'default') {
+    return monitors
+  }
+
+  const sorted = [...monitors]
+
+  sorted.sort((left, right) => {
+    switch (sort) {
+      case 'name-asc':
+        return compareMonitorName(left, right)
+      case 'name-desc':
+        return -compareMonitorName(left, right)
+      case 'status': {
+        const rank =
+          monitorStatusRankValue(presentationKind(left)) -
+          monitorStatusRankValue(presentationKind(right))
+
+        return rank || compareMonitorName(left, right)
+      }
+      case 'type': {
+        const type = monitorNameCollator.compare(
+          left.monitor_type,
+          right.monitor_type,
+        )
+
+        return type || compareMonitorName(left, right)
+      }
+      case 'newest':
+        return -compareMonitorCreatedAt(left, right)
+      case 'oldest':
+        return compareMonitorCreatedAt(left, right)
+      default:
+        return 0
+    }
+  })
+
+  return sorted
 }
 
 // parsePortsInput parses the comma-separated Ports field. Ports are normalized
@@ -183,6 +282,9 @@ function App() {
   const [groupFilter, setGroupFilter] = useState<
     'all' | 'ungrouped' | number
   >('all')
+  const [monitorSearch, setMonitorSearch] = useState('')
+  const [monitorSort, setMonitorSort] =
+    useState<MonitorSort>('default')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [alertStatus, setAlertStatus] = useState<AlertStatus | null>(null)
@@ -415,17 +517,37 @@ function App() {
     }
   }, [monitors])
 
+  const searchActive = monitorSearch.trim().length > 0
+
   const filteredMonitors = useMemo(() => {
+    let visible = monitors
+
     if (groupFilter === 'all') {
-      return monitors
+      visible = monitors
+    } else if (groupFilter === 'ungrouped') {
+      visible = monitors.filter((monitor) => !monitor.group_id)
+    } else {
+      visible = monitors.filter(
+        (monitor) => monitor.group_id === groupFilter,
+      )
     }
-    if (groupFilter === 'ungrouped') {
-      return monitors.filter((monitor) => !monitor.group_id)
+
+    const query = monitorSearch.trim().toLowerCase()
+
+    if (query !== '') {
+      visible = visible.filter(
+        (monitor) =>
+          monitor.name.toLowerCase().includes(query) ||
+          monitor.target.toLowerCase().includes(query),
+      )
     }
-    return monitors.filter(
-      (monitor) => monitor.group_id === groupFilter,
+
+    return sortMonitors(
+      visible,
+      monitorSort,
+      (monitor) => monitorState(monitor).kind,
     )
-  }, [monitors, groupFilter])
+  }, [monitors, groupFilter, monitorSearch, monitorSort])
 
   function formatLastChecked(value?: string) {
     if (!value) {
@@ -994,6 +1116,40 @@ function buildResponseChart(data: MonitorChartPoint[]) {
             </div>
 
             <div className="section-header-actions">
+              <label className="monitor-search">
+                <span className="sr-only">
+                  Search monitors by name or target
+                </span>
+                <input
+                  type="search"
+                  value={monitorSearch}
+                  onChange={(event) =>
+                    setMonitorSearch(event.target.value)
+                  }
+                  placeholder="Search monitors by name or target"
+                />
+              </label>
+
+              <label className="sort-filter">
+                <span>Sort</span>
+                <select
+                  value={monitorSort}
+                  onChange={(event) =>
+                    setMonitorSort(
+                      event.target.value as MonitorSort,
+                    )
+                  }
+                >
+                  <option value="default">Default</option>
+                  <option value="name-asc">Name A → Z</option>
+                  <option value="name-desc">Name Z → A</option>
+                  <option value="status">Status</option>
+                  <option value="type">Monitor type</option>
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
+                </select>
+              </label>
+
               <label className="group-filter">
                 <span>Group</span>
                 <select
@@ -1057,7 +1213,9 @@ function buildResponseChart(data: MonitorChartPoint[]) {
             monitors.length > 0 &&
             filteredMonitors.length === 0 && (
               <div className="message">
-                No monitors match this group filter.
+                {searchActive
+                  ? 'No monitors match your search.'
+                  : 'No monitors match this group filter.'}
               </div>
             )}
 

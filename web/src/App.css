@@ -212,6 +212,51 @@ button {
   color: #172033;
 }
 
+/* Accessible visually-hidden label text. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.monitor-search {
+  display: flex;
+}
+
+.monitor-search input {
+  width: 240px;
+  max-width: 100%;
+  border: 1px solid #d9dfeb;
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: #ffffff;
+  color: #172033;
+}
+
+.sort-filter {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #778196;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sort-filter select {
+  min-width: 130px;
+  border: 1px solid #d9dfeb;
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: #ffffff;
+  color: #172033;
+}
+
 /* Monitor List */
 
 .monitor-list {
@@ -740,6 +785,14 @@ button {
   .group-row-actions {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .monitor-search {
+    width: 100%;
+  }
+
+  .monitor-search input {
+    width: 100%;
   }
 }
 .monitor-card {
