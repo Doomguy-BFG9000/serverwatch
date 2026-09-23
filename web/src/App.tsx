@@ -8,6 +8,7 @@ type MonitorStatus = {
   monitor_type: string
   target: string
   enabled: boolean
+  maintenance: boolean
   status: string
   response_time_ms?: number
   status_code?: number
@@ -396,16 +397,20 @@ function App() {
   }, [])
 
   const summary = useMemo(() => {
+    const activelyMonitored = monitors.filter(
+      (item) => item.enabled && !item.maintenance,
+    )
+
     return {
       total: monitors.length,
-      up: monitors.filter(
-        (item) => item.enabled && item.status === 'up',
+      up: activelyMonitored.filter(
+        (item) => item.status === 'up',
       ).length,
-      down: monitors.filter(
-        (item) => item.enabled && item.status === 'down',
+      down: activelyMonitored.filter(
+        (item) => item.status === 'down',
       ).length,
-      pending: monitors.filter(
-        (item) => item.enabled && item.status === 'pending',
+      pending: activelyMonitored.filter(
+        (item) => item.status === 'pending',
       ).length,
     }
   }, [monitors])
@@ -428,6 +433,18 @@ function App() {
     }
 
     return new Date(value).toLocaleString()
+  }
+
+  // monitorState centralizes status presentation precedence:
+  // disabled (Paused) overrides maintenance, which overrides the stored status.
+  function monitorState(monitor: MonitorStatus) {
+    if (!monitor.enabled) {
+      return { kind: 'paused', label: 'PAUSED' }
+    }
+    if (monitor.maintenance) {
+      return { kind: 'maintenance', label: 'MAINTENANCE' }
+    }
+    return { kind: monitor.status, label: monitor.status.toUpperCase() }
   }
 
   function closeAddMonitor() {
@@ -510,6 +527,46 @@ async function changeRange(range: TimeRange) {
         err instanceof Error
           ? `Failed to update monitor: ${err.message}`
           : 'Failed to update monitor',
+      )
+    }
+  }
+
+  async function toggleMaintenance(monitor: MonitorStatus) {
+    const entering = !monitor.maintenance
+
+    const confirmed = window.confirm(
+      entering
+        ? `Enter maintenance mode for "${monitor.name}"?\n\nScheduled checks and alerts for this monitor will pause while maintenance mode is active. Existing history is preserved.`
+        : `Exit maintenance mode for "${monitor.name}"?\n\nScheduled monitoring will resume. The next real check may generate a normal DOWN or recovery alert based on the preserved previous state.`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      const response = await fetch(
+        `/api/v1/monitors/${monitor.id}/maintenance`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ maintenance: entering }),
+        },
+      )
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      setSelectedMonitor(null)
+      await loadMonitors()
+    } catch (err) {
+      window.alert(
+        err instanceof Error
+          ? `Failed to update maintenance mode: ${err.message}`
+          : 'Failed to update maintenance mode',
       )
     }
   }
@@ -1017,15 +1074,18 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   <div className="monitor-main">
                     <div
                       className={`status-dot ${
-                        monitor.enabled
-                          ? monitor.status
-                          : 'paused'
+                        monitorState(monitor).kind
                       }`}
                     />
 
                     <div>
                       <div className="monitor-title-row">
                         <h3>{monitor.name}</h3>
+                        {monitor.enabled && monitor.maintenance && (
+                          <span className="maintenance-badge">
+                            Maintenance
+                          </span>
+                        )}
                         <span
                           className={
                             monitor.group_name
@@ -1053,14 +1113,10 @@ function buildResponseChart(data: MonitorChartPoint[]) {
 
                       <strong
                         className={`status-text ${
-                          monitor.enabled
-                            ? monitor.status
-                            : 'paused'
+                          monitorState(monitor).kind
                         }`}
                       >
-                        {monitor.enabled
-                          ? monitor.status.toUpperCase()
-                          : 'PAUSED'}
+                        {monitorState(monitor).label}
                       </strong>
                     </div>
 
@@ -1335,6 +1391,12 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   {selectedMonitor.target} ·{' '}
                   {selectedMonitor.group_name || 'Ungrouped'}
                 </p>
+                {selectedMonitor.enabled &&
+                  selectedMonitor.maintenance && (
+                    <span className="maintenance-badge">
+                      Maintenance
+                    </span>
+                  )}
               </div>
 
               <button
@@ -1354,14 +1416,10 @@ function buildResponseChart(data: MonitorChartPoint[]) {
 
                 <strong
                   className={`status-text ${
-                    selectedMonitor.enabled
-                      ? selectedMonitor.status
-                      : 'paused'
+                    monitorState(selectedMonitor).kind
                   }`}
                 >
-                  {selectedMonitor.enabled
-                    ? selectedMonitor.status.toUpperCase()
-                    : 'PAUSED'}
+                  {monitorState(selectedMonitor).label}
                 </strong>
               </div>
 
@@ -1498,6 +1556,17 @@ function buildResponseChart(data: MonitorChartPoint[]) {
   </div>
 </div>
             <div className="detail-actions">
+              <button
+                type="button"
+                onClick={() =>
+                  toggleMaintenance(selectedMonitor)
+                }
+              >
+                {selectedMonitor.maintenance
+                  ? 'Exit Maintenance'
+                  : 'Enter Maintenance'}
+              </button>
+
               <button
                 type="button"
                 onClick={() =>

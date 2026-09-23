@@ -83,6 +83,10 @@ func main() {
 	mux.HandleFunc("GET /api/v1/monitors/{id}/ports", monitorHandler.Ports)
 	mux.HandleFunc("PUT /api/v1/monitors/{id}", monitorHandler.Update)
 	mux.HandleFunc(
+		"PUT /api/v1/monitors/{id}/maintenance",
+		monitorHandler.SetMaintenance,
+	)
+	mux.HandleFunc(
 		"GET /api/v1/monitors/{id}/stats",
 		monitorHandler.Stats,
 	)

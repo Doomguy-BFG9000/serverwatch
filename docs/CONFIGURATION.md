@@ -123,3 +123,47 @@ monitors become ungrouped.
 Groups are organizational only. They do not change monitor intervals,
 timeouts, checker behavior, scheduler dispatch, or alerting. Dashboard group
 filtering only changes which monitors are visible.
+
+## Maintenance mode
+
+Maintenance mode is a manual, per-monitor switch for planned work. It is
+separate from the `enabled` flag:
+
+- `enabled: false` administratively disables the monitor.
+- `enabled: true` with `maintenance: true` keeps the monitor configured but
+  pauses scheduled monitoring.
+- `enabled: true` with `maintenance: false` is normal monitoring.
+
+The dedicated endpoint toggles the flag:
+
+```text
+PUT /api/v1/monitors/{id}/maintenance
+```
+
+```json
+{ "maintenance": true }
+```
+
+Send `"maintenance": false` to exit. The response is the updated monitor
+representation. A malformed monitor id or malformed JSON returns `400`, a
+missing `maintenance` field or a non-boolean value returns `400`, and an unknown
+monitor returns `404`. Setting the same value repeatedly is safe.
+
+While maintenance is active, scheduled checks are paused, so no new scheduled
+result is written and no scheduled DOWN, recovery, or SSL-expiry alert is sent.
+Existing check history and alert state are preserved. Exiting maintenance does
+not run a check immediately and does not fabricate an UP result; the monitor
+becomes eligible for the scheduler again and the next real scheduled check is
+processed with the preserved alert state. The monitor's group is unaffected.
+
+The general monitor `PUT` endpoint also accepts an optional `maintenance`
+boolean. Omit it to leave the current value unchanged, or send `"maintenance":
+true` / `"maintenance": false` to change it explicitly. The dashboard uses the
+dedicated endpoint with a confirmation instead of editing it in the monitor
+form, and maintenance is not a monitor-creation field (new monitors default to
+`maintenance: false`).
+
+Maintenance is manual and per-monitor. There are no schedules, start/end times,
+recurrence, or reasons in this phase. On-demand diagnostic panels for
+SSL/DNS/Port monitors still run a fresh check when opened; that is a display
+action and does not create a scheduled result or an alert transition.

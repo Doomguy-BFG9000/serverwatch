@@ -27,3 +27,22 @@ func TestMonitorGroupsMigration(t *testing.T) {
 		}
 	}
 }
+
+func TestMonitorMaintenanceMigration(t *testing.T) {
+	contents, err := migrationFiles.ReadFile("migrations/005_monitor_maintenance.sql")
+	if err != nil {
+		t.Fatalf("read monitor maintenance migration: %v", err)
+	}
+	migration := string(contents)
+
+	required := []string{
+		"ALTER TABLE monitors",
+		"ADD COLUMN IF NOT EXISTS maintenance BOOLEAN NOT NULL DEFAULT FALSE",
+	}
+
+	for _, fragment := range required {
+		if !strings.Contains(migration, fragment) {
+			t.Fatalf("migration does not contain %q", fragment)
+		}
+	}
+}

@@ -84,3 +84,27 @@ Group names are trimmed, must be non-empty, are limited to 100 characters, and
 must be unique case-insensitively. Deleting a group never deletes its monitors;
 those monitors become ungrouped. The dashboard can filter the visible monitor
 list by group, Ungrouped, or All Groups without pausing or changing monitors.
+
+## Monitor maintenance mode
+
+Maintenance mode is a manual, per-monitor switch for planned work. While it is
+active, ServerWatch stops running scheduled checks for that monitor, so no new
+scheduled result is written and no DOWN, recovery, or SSL-expiry alert is sent
+from scheduled checks. The monitor, its configuration, its group, its check
+history, and its alert state are all preserved.
+
+Maintenance mode is independent of the enabled flag. A monitor is normally one
+of three states:
+
+- Enabled and normal: scheduled monitoring is active.
+- Enabled and in maintenance: configured and enabled, but scheduled monitoring
+  is temporarily paused.
+- Disabled: administratively turned off.
+
+Exiting maintenance does not run a check immediately and does not fabricate an
+UP result or recovery event. The monitor becomes eligible for the scheduler
+again, and the first real scheduled check is processed with the existing alert
+state. The dashboard shows a distinct `Maintenance` badge and provides
+`Enter Maintenance` / `Exit Maintenance` actions with a confirmation. See
+[Maintenance mode](docs/CONFIGURATION.md#maintenance-mode) and
+[Maintenance troubleshooting](docs/TROUBLESHOOTING.md#maintenance-mode).

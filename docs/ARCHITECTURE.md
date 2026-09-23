@@ -133,3 +133,39 @@ Groups are deliberately not part of the monitoring runtime. The scheduler's
 due-monitor query does not join or filter on groups, monitor checkers do not
 read group metadata, and alert transitions remain based only on monitor
 results. Group filtering in the dashboard is client-side presentation logic.
+
+## Monitor maintenance mode
+
+Maintenance mode is stored as a single `monitors.maintenance BOOLEAN NOT NULL
+DEFAULT FALSE` column (migration `005_monitor_maintenance.sql`). It is manual,
+per-monitor operational state, not a synthetic check result: the toggle never
+inserts a `monitor_results` row.
+
+The scheduled-check pause is enforced where due monitors are selected. The
+scheduler's due-monitor query filters on `enabled = TRUE AND maintenance =
+FALSE`, so a monitor in maintenance is never dispatched to a checker and no
+scheduled result or scheduled alert transition is generated for it. This keeps
+the pause in the query instead of loading and discarding monitors after
+dispatch, and it does not change scheduler cadence, concurrency, or checker
+behavior.
+
+The dedicated maintenance endpoint (`PUT /api/v1/monitors/{id}/maintenance`)
+only writes the `maintenance` column. It does not run a checker, write a result,
+or touch `monitor_alert_state`. Because alert transitions are produced only by
+the scheduler's alert path, which is skipped while maintenance is active, no
+DOWN, recovery, or SSL-expiry alert can be triggered by entering or leaving
+maintenance. Exiting maintenance does not run a check immediately; the next
+real scheduled check is evaluated with the preserved alert state.
+
+The `enabled` flag and `maintenance` are independent persistent state. They are
+never coupled: disabling a monitor does not clear maintenance, and removing
+maintenance does not re-enable a disabled monitor. For presentation only, the
+dashboard shows `Disabled` (Paused) before `Maintenance` before the stored
+status.
+
+On-demand diagnostic endpoints (`/ssl`, `/dns`, `/ports`) are unchanged and
+remain callable while a monitor is in maintenance. They run a fresh check for
+display but never mutate scheduler alert state or write scheduled results.
+
+No scheduling windows, start/end times, recurrence, or maintenance reasons are
+part of this phase; maintenance is a manual on/off flag only.

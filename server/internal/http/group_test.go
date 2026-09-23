@@ -195,6 +195,7 @@ func (store *fakeGroupMonitorStore) ListStatus(
 			Target:          monitor.Target,
 			Config:          monitor.Config,
 			Enabled:         monitor.Enabled,
+			Maintenance:     monitor.Maintenance,
 			IntervalSeconds: monitor.IntervalSeconds,
 			TimeoutSeconds:  monitor.TimeoutSeconds,
 			Status:          "pending",
@@ -250,6 +251,26 @@ func (store *fakeGroupMonitorStore) Update(
 		}
 	}
 
+	if input.Maintenance.Set {
+		monitor.Maintenance = input.Maintenance.Value
+	}
+
+	monitor.UpdatedAt = time.Unix(1, 0).UTC()
+	store.monitors[id] = monitor
+	return monitor, nil
+}
+
+func (store *fakeGroupMonitorStore) SetMaintenance(
+	_ context.Context,
+	id int64,
+	maintenance bool,
+) (service.Monitor, error) {
+	monitor, ok := store.monitors[id]
+	if !ok {
+		return service.Monitor{}, repository.ErrMonitorNotFound
+	}
+
+	monitor.Maintenance = maintenance
 	monitor.UpdatedAt = time.Unix(1, 0).UTC()
 	store.monitors[id] = monitor
 	return monitor, nil

@@ -14,6 +14,7 @@ type Monitor struct {
 	IntervalSeconds int            `json:"interval_seconds"`
 	TimeoutSeconds  int            `json:"timeout_seconds"`
 	Enabled         bool           `json:"enabled"`
+	Maintenance     bool           `json:"maintenance"`
 	GroupID         *int64         `json:"group_id"`
 	GroupName       string         `json:"group_name"`
 	CreatedAt       time.Time      `json:"created_at"`
@@ -105,6 +106,7 @@ type MonitorStatus struct {
 	Target          string         `json:"target"`
 	Config          *MonitorConfig `json:"config,omitempty"`
 	Enabled         bool           `json:"enabled"`
+	Maintenance     bool           `json:"maintenance"`
 	IntervalSeconds int            `json:"interval_seconds"`
 	TimeoutSeconds  int            `json:"timeout_seconds"`
 	Status          string         `json:"status"`
@@ -141,6 +143,27 @@ func (value *OptionalInt64) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// OptionalBool distinguishes an omitted JSON field from an explicit boolean.
+// Monitor updates use it so older clients that never send "maintenance" preserve
+// the monitor's current maintenance state, while newer clients can explicitly
+// enter (true) or exit (false) maintenance.
+type OptionalBool struct {
+	Set   bool
+	Value bool
+}
+
+func (value *OptionalBool) UnmarshalJSON(data []byte) error {
+	value.Set = true
+
+	var parsed bool
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+
+	value.Value = parsed
+	return nil
+}
+
 type UpdateMonitorInput struct {
 	Name            string         `json:"name"`
 	MonitorType     string         `json:"monitor_type"`
@@ -148,6 +171,7 @@ type UpdateMonitorInput struct {
 	IntervalSeconds int            `json:"interval_seconds"`
 	TimeoutSeconds  int            `json:"timeout_seconds"`
 	Enabled         bool           `json:"enabled"`
+	Maintenance     OptionalBool   `json:"maintenance"`
 	Config          *MonitorConfig `json:"config,omitempty"`
 	GroupID         OptionalInt64  `json:"group_id"`
 }

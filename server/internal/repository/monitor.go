@@ -68,6 +68,7 @@ func (r *MonitorRepository) Create(
 				interval_seconds,
 				timeout_seconds,
 				enabled,
+				maintenance,
 				group_id,
 				created_at,
 				updated_at
@@ -81,6 +82,7 @@ func (r *MonitorRepository) Create(
 			inserted.interval_seconds,
 			inserted.timeout_seconds,
 			inserted.enabled,
+			inserted.maintenance,
 			inserted.group_id,
 			COALESCE(monitor_groups.name, ''),
 			inserted.created_at,
@@ -104,6 +106,7 @@ func (r *MonitorRepository) Create(
 		&monitor.IntervalSeconds,
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
+		&monitor.Maintenance,
 		&monitor.GroupID,
 		&monitor.GroupName,
 		&monitor.CreatedAt,
@@ -132,6 +135,7 @@ func (r *MonitorRepository) List(
 			m.interval_seconds,
 			m.timeout_seconds,
 			m.enabled,
+			m.maintenance,
 			m.group_id,
 			COALESCE(monitor_groups.name, ''),
 			m.created_at,
@@ -161,6 +165,7 @@ func (r *MonitorRepository) List(
 			&monitor.IntervalSeconds,
 			&monitor.TimeoutSeconds,
 			&monitor.Enabled,
+			&monitor.Maintenance,
 			&monitor.GroupID,
 			&monitor.GroupName,
 			&monitor.CreatedAt,
@@ -195,6 +200,7 @@ func (r *MonitorRepository) GetByID(
 			m.interval_seconds,
 			m.timeout_seconds,
 			m.enabled,
+			m.maintenance,
 			m.group_id,
 			COALESCE(monitor_groups.name, ''),
 			m.created_at,
@@ -213,6 +219,7 @@ func (r *MonitorRepository) GetByID(
 		&monitor.IntervalSeconds,
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
+		&monitor.Maintenance,
 		&monitor.GroupID,
 		&monitor.GroupName,
 		&monitor.CreatedAt,
@@ -272,6 +279,7 @@ const listDueQuery = `
 	) last_result ON TRUE
 	WHERE
 		m.enabled = TRUE
+		AND m.maintenance = FALSE
 		AND m.monitor_type IN ('http', 'https', 'tcp', 'ssl', 'ping', 'dns', 'port')
 		AND (
 			last_result.checked_at IS NULL
@@ -432,6 +440,7 @@ func (r *MonitorRepository) ListStatus(
 			m.target,
 			m.config,
 			m.enabled,
+			m.maintenance,
 			m.interval_seconds,
 			m.timeout_seconds,
 			COALESCE(lr.status, 'pending') AS status,
@@ -476,6 +485,7 @@ func (r *MonitorRepository) ListStatus(
 			&item.Target,
 			&config,
 			&item.Enabled,
+			&item.Maintenance,
 			&item.IntervalSeconds,
 			&item.TimeoutSeconds,
 			&item.Status,
@@ -575,6 +585,10 @@ func (r *MonitorRepository) Update(
 					WHEN $9 THEN $10::bigint
 					ELSE group_id
 				END,
+				maintenance = CASE
+					WHEN $11 THEN $12::boolean
+					ELSE maintenance
+				END,
 				updated_at = NOW()
 			WHERE id = $1
 			RETURNING
@@ -586,6 +600,7 @@ func (r *MonitorRepository) Update(
 				interval_seconds,
 				timeout_seconds,
 				enabled,
+				maintenance,
 				group_id,
 				created_at,
 				updated_at
@@ -599,6 +614,7 @@ func (r *MonitorRepository) Update(
 			updated.interval_seconds,
 			updated.timeout_seconds,
 			updated.enabled,
+			updated.maintenance,
 			updated.group_id,
 			COALESCE(monitor_groups.name, ''),
 			updated.created_at,
@@ -616,6 +632,8 @@ func (r *MonitorRepository) Update(
 		input.Enabled,
 		input.GroupID.Set,
 		input.GroupID.Value,
+		input.Maintenance.Set,
+		input.Maintenance.Value,
 	).Scan(
 		&monitor.ID,
 		&monitor.Name,
@@ -625,6 +643,7 @@ func (r *MonitorRepository) Update(
 		&monitor.IntervalSeconds,
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
+		&monitor.Maintenance,
 		&monitor.GroupID,
 		&monitor.GroupName,
 		&monitor.CreatedAt,
@@ -641,6 +660,90 @@ func (r *MonitorRepository) Update(
 
 	return monitor, err
 }
+
+// setMaintenanceQuery toggles only monitors.maintenance. It deliberately does
+// not read or write monitor_results or monitor_alert_state, so entering or
+// exiting maintenance never creates a synthetic result or an alert transition.
+const setMaintenanceQuery = `
+	WITH updated AS (
+		UPDATE monitors
+		SET
+			maintenance = $2,
+			updated_at = NOW()
+		WHERE id = $1
+		RETURNING
+			id,
+			name,
+			monitor_type,
+			target,
+			config,
+			interval_seconds,
+			timeout_seconds,
+			enabled,
+			maintenance,
+			group_id,
+			created_at,
+			updated_at
+	)
+	SELECT
+		updated.id,
+		updated.name,
+		updated.monitor_type,
+		updated.target,
+		updated.config,
+		updated.interval_seconds,
+		updated.timeout_seconds,
+		updated.enabled,
+		updated.maintenance,
+		updated.group_id,
+		COALESCE(monitor_groups.name, ''),
+		updated.created_at,
+		updated.updated_at
+	FROM updated
+	LEFT JOIN monitor_groups ON monitor_groups.id = updated.group_id
+`
+
+// SetMaintenance toggles the manual maintenance flag for one monitor and
+// returns the updated representation. It only touches monitors.maintenance, so
+// check history and monitor_alert_state are left untouched and no scheduled
+// check is run here.
+func (r *MonitorRepository) SetMaintenance(
+	ctx context.Context,
+	id int64,
+	maintenance bool,
+) (service.Monitor, error) {
+	var monitor service.Monitor
+	var config []byte
+
+	err := r.DB.QueryRow(
+		ctx,
+		setMaintenanceQuery,
+		id,
+		maintenance,
+	).Scan(
+		&monitor.ID,
+		&monitor.Name,
+		&monitor.MonitorType,
+		&monitor.Target,
+		&config,
+		&monitor.IntervalSeconds,
+		&monitor.TimeoutSeconds,
+		&monitor.Enabled,
+		&monitor.Maintenance,
+		&monitor.GroupID,
+		&monitor.GroupName,
+		&monitor.CreatedAt,
+		&monitor.UpdatedAt,
+	)
+	monitor.Config = decodeMonitorConfig(config)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return service.Monitor{}, ErrMonitorNotFound
+	}
+
+	return monitor, err
+}
+
 func (r *MonitorRepository) GetStats(
 	ctx context.Context,
 	monitorID int64,

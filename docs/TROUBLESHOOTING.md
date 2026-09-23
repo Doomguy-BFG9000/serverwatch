@@ -107,3 +107,24 @@ Groups do not pause monitors and do not affect scheduler, checker, or alert
 behavior. If a monitor's status is stale after editing its group, group
 assignment itself does not trigger an immediate check; wait for the next
 configured monitoring interval.
+
+## Maintenance mode
+
+Maintenance mode is manual and per-monitor. Entering maintenance pauses
+scheduled checks for that monitor, so no new scheduled result is written and no
+scheduled DOWN, recovery, or SSL-expiry alert is sent while it is active. The
+monitor, its configuration, its group, its check history, and its alert state
+are all preserved.
+
+A monitor in maintenance may still show its last historical status, and a
+disabled monitor takes presentation precedence over maintenance. If a status
+looks stale, that is expected: maintenance is operational state, not a
+synthetic check result, and ServerWatch does not fabricate an UP result or a
+recovery event.
+
+Exiting maintenance does not run a check immediately. The monitor becomes
+eligible for the scheduler again, and the next real scheduled check is
+processed with the existing alert state, so it may produce a normal DOWN or
+recovery alert. Maintenance has no effect on monitor groups or group filtering,
+and on-demand SSL/DNS/Port diagnostic panels still run a fresh display check
+when opened. Maintenance does not create any alert transition by itself.
