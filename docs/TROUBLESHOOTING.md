@@ -123,6 +123,22 @@ at all. Search and sorting are display-only and never delete, pause, or modify
 monitors, and the selected search, sort, and group are not remembered after a
 browser reload.
 
+## Dashboard health summary
+
+The health summary at the top of the dashboard counts every configured monitor,
+so changing the Group filter, Search, or Sort does not change its numbers; those
+controls only change the monitor cards shown below the summary. If a count
+looks unexpected, check the monitor's own state first.
+
+`Disabled` takes precedence over every other state: a disabled monitor is
+counted as Disabled even if it is also in maintenance or its last result was
+DOWN. `Maintenance` takes precedence over the stored status, so an enabled
+monitor in maintenance is counted as Maintenance rather than Up or Down.
+`Pending / No Data` means an enabled, non-maintenance monitor has no result yet
+or an unrecognized status. The five state counts always add up to Total
+Monitors, and the summary cards are display-only and cannot be clicked to
+filter the list.
+
 ## Maintenance mode
 
 Maintenance mode is manual and per-monitor. Entering maintenance pauses

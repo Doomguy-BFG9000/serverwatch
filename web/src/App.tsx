@@ -498,23 +498,43 @@ function App() {
     return () => window.clearInterval(timer)
   }, [])
 
+  // Dashboard health summary is a global overview of every configured
+  // monitor. It deliberately reads the unfiltered `monitors` collection so
+  // Group/Search/Sort only change the visible list below, never these counts.
+  // Each monitor falls into exactly one bucket via monitorState() so the
+  // presentation precedence (Disabled, then Maintenance, then status) cannot
+  // drift from the rest of the dashboard. The buckets partition the monitors:
+  // up + down + maintenance + disabled + pending === total.
   const summary = useMemo(() => {
-    const activelyMonitored = monitors.filter(
-      (item) => item.enabled && !item.maintenance,
-    )
-
-    return {
+    const counts = {
       total: monitors.length,
-      up: activelyMonitored.filter(
-        (item) => item.status === 'up',
-      ).length,
-      down: activelyMonitored.filter(
-        (item) => item.status === 'down',
-      ).length,
-      pending: activelyMonitored.filter(
-        (item) => item.status === 'pending',
-      ).length,
+      up: 0,
+      down: 0,
+      maintenance: 0,
+      disabled: 0,
+      pending: 0,
     }
+
+    for (const monitor of monitors) {
+      switch (monitorState(monitor).kind) {
+        case 'paused':
+          counts.disabled += 1
+          break
+        case 'maintenance':
+          counts.maintenance += 1
+          break
+        case 'down':
+          counts.down += 1
+          break
+        case 'up':
+          counts.up += 1
+          break
+        default:
+          counts.pending += 1
+      }
+    }
+
+    return counts
   }, [monitors])
 
   const searchActive = monitorSearch.trim().length > 0
@@ -1074,24 +1094,37 @@ function buildResponseChart(data: MonitorChartPoint[]) {
       </header>
 
       <main className="content">
-        <section className="summary-grid">
-          <div className="summary-card">
+        <section
+          className="summary-grid"
+          aria-label="Monitor health summary"
+        >
+          <div className="summary-card total">
             <span>Total Monitors</span>
             <strong>{summary.total}</strong>
           </div>
 
-          <div className="summary-card">
+          <div className="summary-card up">
             <span>Up</span>
             <strong>{summary.up}</strong>
           </div>
 
-          <div className="summary-card">
+          <div className="summary-card down">
             <span>Down</span>
             <strong>{summary.down}</strong>
           </div>
 
-          <div className="summary-card">
-            <span>Pending</span>
+          <div className="summary-card maintenance">
+            <span>Maintenance</span>
+            <strong>{summary.maintenance}</strong>
+          </div>
+
+          <div className="summary-card disabled">
+            <span>Disabled</span>
+            <strong>{summary.disabled}</strong>
+          </div>
+
+          <div className="summary-card pending">
+            <span>Pending / No Data</span>
             <strong>{summary.pending}</strong>
           </div>
         </section>

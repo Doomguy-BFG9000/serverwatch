@@ -156,6 +156,25 @@ status response exposes that field. This is additive and does not change any
 API semantics, scheduler dispatch, checker behavior, or alert logic; the
 timestamp is read-only data already stored on the monitor row.
 
+## Dashboard health summary
+
+The dashboard health summary is a frontend-only derived view over the monitor
+collection already returned by `GET /api/v1/monitors/status`. It reads the
+unfiltered `monitors` state and produces six counts: Total Monitors, Up, Down,
+Maintenance, Disabled, and Pending / No Data. No endpoint, SQL query, index, or
+migration is added, and the summary introduces no new filtering dimension.
+
+Classification reuses the existing `monitorState` presentation precedence so
+the summary cannot drift from the state shown on each monitor card: a disabled
+monitor maps to Disabled, otherwise a monitor in maintenance maps to
+Maintenance, otherwise the stored monitoring status maps to Up, Down, or
+Pending / No Data. Each monitor therefore lands in exactly one bucket, and the
+five state buckets always sum to Total Monitors.
+
+The summary is intentionally independent of the Group filter, Search, and Sort
+pipeline that produces the visible monitor list. Those controls only change the
+cards rendered below the summary, never the global health counts.
+
 ## Monitor maintenance mode
 
 Maintenance mode is stored as a single `monitors.maintenance BOOLEAN NOT NULL

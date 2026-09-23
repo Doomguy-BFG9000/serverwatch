@@ -99,7 +99,7 @@ button {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -108,6 +108,7 @@ button {
   border: 1px solid #e5e9f2;
   border-radius: 14px;
   padding: 20px;
+  min-width: 0;
 }
 
 .summary-card span {
@@ -122,6 +123,27 @@ button {
   font-size: 30px;
   line-height: 1;
   color: #172033;
+}
+
+/* Operational-state colors reuse the existing status palette. */
+.summary-card.up strong {
+  color: #15803d;
+}
+
+.summary-card.down strong {
+  color: #dc2626;
+}
+
+.summary-card.pending strong {
+  color: #d97706;
+}
+
+.summary-card.maintenance strong {
+  color: #6d28d9;
+}
+
+.summary-card.disabled strong {
+  color: #64748b;
 }
 
 .alert-section {
@@ -715,7 +737,7 @@ button {
 
 @media (max-width: 900px) {
   .summary-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .monitor-card {
@@ -758,7 +780,7 @@ button {
   }
 
   .summary-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .monitor-meta {

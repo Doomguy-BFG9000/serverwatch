@@ -102,6 +102,27 @@ order; they never modify a monitor, change monitoring behavior, or affect
 scheduling, checkers, alerting, or maintenance. Selections are not persisted
 across a browser reload.
 
+## Dashboard health summary
+
+The dashboard shows a compact health summary above the monitor controls:
+Total Monitors, Up, Down, Maintenance, Disabled, and Pending / No Data. The
+summary is frontend-only and derived from the monitor list the browser has
+already loaded; it adds no endpoint, query, or migration.
+
+Every configured monitor is counted in exactly one bucket. A disabled monitor
+is always counted as Disabled, even if it is also in maintenance or its last
+result was DOWN. Otherwise a monitor in maintenance is counted as Maintenance,
+regardless of its last result. Remaining monitors use their current monitoring
+status: Down, Up, or Pending / No Data when no result exists yet. The buckets
+partition the monitors, so Up + Down + Maintenance + Disabled + Pending always
+equals Total Monitors.
+
+The summary is a global overview: it counts every configured monitor and is not
+affected by the Group filter, Search, or Sort controls, which only change the
+monitor cards shown below it. The summary cards are informational and are not
+clickable. See [Health summary](docs/CONFIGURATION.md#dashboard-health-summary)
+and [Health summary troubleshooting](docs/TROUBLESHOOTING.md#dashboard-health-summary).
+
 ## Monitor maintenance mode
 
 Maintenance mode is a manual, per-monitor switch for planned work. While it is
