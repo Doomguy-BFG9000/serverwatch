@@ -129,6 +129,12 @@ type MonitorStatusFilter =
   | 'disabled'
   | 'pending'
 
+// Monitors per page. Keep this list adjacent to the type so the selector
+// options cannot drift from the state that bounds them.
+const pageSizeOptions = [12, 24, 48] as const
+type PageSize = (typeof pageSizeOptions)[number]
+const defaultPageSize: PageSize = 12
+
 type AlertStatus = {
   email_enabled: boolean
   smtp_configured: boolean
@@ -314,6 +320,8 @@ function App() {
     useState<MonitorSort>('default')
   const [statusFilter, setStatusFilter] =
     useState<MonitorStatusFilter>('all')
+  const [pageSize, setPageSize] = useState<PageSize>(defaultPageSize)
+  const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [alertStatus, setAlertStatus] = useState<AlertStatus | null>(null)
@@ -606,6 +614,58 @@ function App() {
     )
   }, [monitors, groupFilter, statusFilter, monitorSearch, monitorSort])
 
+  // Pagination runs last, after Group + Status + Search + Sort have produced
+  // the visible set. pageCount is kept at least 1 so an empty result still
+  // reports "Page 1 of 1". activePage clamps currentPage to the valid range so
+  // a shrinking result set (for example a refresh) can never strand the view
+  // on an out-of-range page.
+  const pageCount = Math.max(
+    1,
+    Math.ceil(filteredMonitors.length / pageSize),
+  )
+  const activePage = Math.min(Math.max(currentPage, 1), pageCount)
+
+  const pagedMonitors = useMemo(() => {
+    const start = (activePage - 1) * pageSize
+
+    return filteredMonitors.slice(start, start + pageSize)
+  }, [filteredMonitors, activePage, pageSize])
+
+  // Filter, sort, and page-size changes all reset the view to the first page so
+  // the user never lands on a page that no longer exists for the new result set.
+  function changeMonitorSearch(value: string) {
+    setMonitorSearch(value)
+    setCurrentPage(1)
+  }
+
+  function changeMonitorSort(value: MonitorSort) {
+    setMonitorSort(value)
+    setCurrentPage(1)
+  }
+
+  function changeGroupFilter(value: 'all' | 'ungrouped' | number) {
+    setGroupFilter(value)
+    setCurrentPage(1)
+  }
+
+  function changeStatusFilter(value: MonitorStatusFilter) {
+    setStatusFilter(value)
+    setCurrentPage(1)
+  }
+
+  function changePageSize(value: PageSize) {
+    setPageSize(value)
+    setCurrentPage(1)
+  }
+
+  function goToPreviousPage() {
+    setCurrentPage(Math.max(1, activePage - 1))
+  }
+
+  function goToNextPage() {
+    setCurrentPage(Math.min(pageCount, activePage + 1))
+  }
+
   function formatLastChecked(value?: string) {
     if (!value) {
       return 'Not checked yet'
@@ -894,7 +954,7 @@ async function changeRange(range: TimeRange) {
       }
 
       if (groupFilter === deletingGroup.id) {
-        setGroupFilter('all')
+        changeGroupFilter('all')
       }
       setDeletingGroup(null)
       setDeleteGroupError('')
@@ -1194,7 +1254,7 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   type="search"
                   value={monitorSearch}
                   onChange={(event) =>
-                    setMonitorSearch(event.target.value)
+                    changeMonitorSearch(event.target.value)
                   }
                   placeholder="Search monitors by name or target"
                 />
@@ -1205,7 +1265,7 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                 <select
                   value={monitorSort}
                   onChange={(event) =>
-                    setMonitorSort(
+                    changeMonitorSort(
                       event.target.value as MonitorSort,
                     )
                   }
@@ -1226,7 +1286,7 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                   value={String(groupFilter)}
                   onChange={(event) => {
                     const value = event.target.value
-                    setGroupFilter(
+                    changeGroupFilter(
                       value === 'all' || value === 'ungrouped'
                         ? value
                         : Number(value),
@@ -1248,7 +1308,7 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                 <select
                   value={statusFilter}
                   onChange={(event) =>
-                    setStatusFilter(
+                    changeStatusFilter(
                       event.target.value as MonitorStatusFilter,
                     )
                   }
@@ -1307,92 +1367,144 @@ function buildResponseChart(data: MonitorChartPoint[]) {
             )}
 
           {!loading && filteredMonitors.length > 0 && (
-            <div className="monitor-list">
-              {filteredMonitors.map((monitor) => (
-                <article
-                  className="monitor-card"
-                  key={monitor.id}
-                  onClick={() =>
-                    openMonitorDetails(monitor)
-                  }
-                >
-                  <div className="monitor-main">
-                    <div
-                      className={`status-dot ${
-                        monitorState(monitor).kind
-                      }`}
-                    />
-
-                    <div>
-                      <div className="monitor-title-row">
-                        <h3>{monitor.name}</h3>
-                        {monitor.enabled && monitor.maintenance && (
-                          <span className="maintenance-badge">
-                            Maintenance
-                          </span>
-                        )}
-                        <span
-                          className={
-                            monitor.group_name
-                              ? 'group-badge'
-                              : 'group-badge ungrouped'
-                          }
-                        >
-                          {monitor.group_name || 'Ungrouped'}
-                        </span>
-                      </div>
-                      <p>
-                        {monitor.monitor_type.toUpperCase()} ·{' '}
-                        {monitor.target}
-                        {monitor.monitor_type === 'port' &&
-                        monitor.config?.ports?.length
-                          ? ` · ${monitor.config.ports.length} ports`
-                          : ''}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="monitor-meta">
-                    <div>
-                      <span>Status</span>
-
-                      <strong
-                        className={`status-text ${
+            <>
+              <div className="monitor-list">
+                {pagedMonitors.map((monitor) => (
+                  <article
+                    className="monitor-card"
+                    key={monitor.id}
+                    onClick={() =>
+                      openMonitorDetails(monitor)
+                    }
+                  >
+                    <div className="monitor-main">
+                      <div
+                        className={`status-dot ${
                           monitorState(monitor).kind
                         }`}
-                      >
-                        {monitorState(monitor).label}
-                      </strong>
+                      />
+
+                      <div>
+                        <div className="monitor-title-row">
+                          <h3>{monitor.name}</h3>
+                          {monitor.enabled && monitor.maintenance && (
+                            <span className="maintenance-badge">
+                              Maintenance
+                            </span>
+                          )}
+                          <span
+                            className={
+                              monitor.group_name
+                                ? 'group-badge'
+                                : 'group-badge ungrouped'
+                            }
+                          >
+                            {monitor.group_name || 'Ungrouped'}
+                          </span>
+                        </div>
+                        <p>
+                          {monitor.monitor_type.toUpperCase()} ·{' '}
+                          {monitor.target}
+                          {monitor.monitor_type === 'port' &&
+                          monitor.config?.ports?.length
+                            ? ` · ${monitor.config.ports.length} ports`
+                            : ''}
+                        </p>
+                      </div>
                     </div>
 
-                    <div>
-                      <span>Response</span>
-                      <strong>
-                        {monitor.response_time_ms !== undefined
-                          ? `${monitor.response_time_ms} ms`
-                          : '—'}
-                      </strong>
-                    </div>
+                    <div className="monitor-meta">
+                      <div>
+                        <span>Status</span>
 
-                    <div>
-                      <span>Code</span>
-                      <strong>
-                        {monitor.status_code ?? '—'}
-                      </strong>
-                    </div>
+                        <strong
+                          className={`status-text ${
+                            monitorState(monitor).kind
+                          }`}
+                        >
+                          {monitorState(monitor).label}
+                        </strong>
+                      </div>
 
-                    <div>
-                      <span>Last checked</span>
-                      <strong>
-                        {formatLastChecked(
-                          monitor.last_checked_at,
-                        )}
-                      </strong>
+                      <div>
+                        <span>Response</span>
+                        <strong>
+                          {monitor.response_time_ms !== undefined
+                            ? `${monitor.response_time_ms} ms`
+                            : '—'}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span>Code</span>
+                        <strong>
+                          {monitor.status_code ?? '—'}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span>Last checked</span>
+                        <strong>
+                          {formatLastChecked(
+                            monitor.last_checked_at,
+                          )}
+                        </strong>
+                      </div>
                     </div>
-                  </div>
-                </article>
-              ))}
-            </div>
+                  </article>
+                ))}
+              </div>
+
+              <nav
+                className="pagination-bar"
+                aria-label="Monitors pagination"
+              >
+                <label className="page-size-filter">
+                  <span>Per page</span>
+                  <select
+                    value={pageSize}
+                    onChange={(event) =>
+                      changePageSize(
+                        Number(event.target.value) as PageSize,
+                      )
+                    }
+                  >
+                    {pageSizeOptions.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="pagination-controls">
+                  <button
+                    type="button"
+                    className="pagination-button"
+                    onClick={goToPreviousPage}
+                    disabled={activePage === 1}
+                  >
+                    Previous
+                  </button>
+
+                  <span
+                    className="pagination-status"
+                    aria-live="polite"
+                  >
+                    Page {activePage} of {pageCount}
+                  </span>
+
+                  <button
+                    type="button"
+                    className="pagination-button"
+                    onClick={goToNextPage}
+                    disabled={activePage === pageCount}
+                  >
+                    Next
+                  </button>
+                </div>
+              </nav>
+            </>
           )}
         </section>
       </main>

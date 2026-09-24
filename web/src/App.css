@@ -304,6 +304,60 @@ button {
   gap: 12px;
 }
 
+/* Pagination */
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.page-size-filter {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #778196;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.page-size-filter select {
+  border: 1px solid #d9dfeb;
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: #ffffff;
+  color: #172033;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pagination-status {
+  color: #172033;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pagination-button {
+  border: 1px solid #d9dfeb;
+  background: #ffffff;
+  color: #172033;
+  border-radius: 9px;
+  padding: 9px 15px;
+}
+
+.pagination-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .monitor-card {
   border: 1px solid #e6eaf1;
   border-radius: 12px;
@@ -842,6 +896,15 @@ button {
   .status-filter select {
     flex: 1;
     width: 100%;
+  }
+
+  .pagination-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pagination-controls {
+    justify-content: space-between;
   }
 }
 .monitor-card {
