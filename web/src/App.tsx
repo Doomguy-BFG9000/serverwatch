@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 
@@ -128,6 +128,14 @@ type MonitorStatusFilter =
   | 'maintenance'
   | 'disabled'
   | 'pending'
+
+// Bulk actions are strictly per-monitor property changes. They intentionally
+// exclude delete and group assignment for this phase.
+type BulkMonitorAction =
+  | 'enable'
+  | 'disable'
+  | 'enter-maintenance'
+  | 'exit-maintenance'
 
 // Monitors per page. Keep this list adjacent to the type so the selector
 // options cannot drift from the state that bounds them.
@@ -322,6 +330,14 @@ function App() {
     useState<MonitorStatusFilter>('all')
   const [pageSize, setPageSize] = useState<PageSize>(defaultPageSize)
   const [currentPage, setCurrentPage] = useState(1)
+  // Selection is a page-scoped set of monitor IDs. It is never persisted and is
+  // cleared whenever the visible context changes.
+  const [selectedMonitorIds, setSelectedMonitorIds] = useState<Set<number>>(
+    new Set(),
+  )
+  const [bulkActionLoading, setBulkActionLoading] = useState(false)
+  const [bulkActionError, setBulkActionError] = useState('')
+  const selectAllOnPageRef = useRef<HTMLInputElement | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [alertStatus, setAlertStatus] = useState<AlertStatus | null>(null)
@@ -631,38 +647,82 @@ function App() {
     return filteredMonitors.slice(start, start + pageSize)
   }, [filteredMonitors, activePage, pageSize])
 
+  // Selection is derived from the current page's monitor IDs, so monitors that
+  // are hidden by a filter, search, or pagination change can never be acted on.
+  const pageMonitorIds = useMemo(
+    () => pagedMonitors.map((monitor) => monitor.id),
+    [pagedMonitors],
+  )
+
+  const selectedPageMonitorIds = useMemo(
+    () => pageMonitorIds.filter((id) => selectedMonitorIds.has(id)),
+    [pageMonitorIds, selectedMonitorIds],
+  )
+
+  const selectedCount = selectedPageMonitorIds.length
+  const allPageSelected =
+    pageMonitorIds.length > 0 && selectedCount === pageMonitorIds.length
+  const somePageSelected = selectedCount > 0 && !allPageSelected
+
+  useEffect(() => {
+    if (selectAllOnPageRef.current) {
+      selectAllOnPageRef.current.indeterminate = somePageSelected
+    }
+  }, [somePageSelected])
+
+  function clearSelection() {
+    setSelectedMonitorIds(new Set())
+    setBulkActionError('')
+  }
+
   // Filter, sort, and page-size changes all reset the view to the first page so
   // the user never lands on a page that no longer exists for the new result set.
+  // They also clear selection because the visible monitor set is changing.
   function changeMonitorSearch(value: string) {
     setMonitorSearch(value)
     setCurrentPage(1)
+    clearSelection()
   }
 
   function changeMonitorSort(value: MonitorSort) {
     setMonitorSort(value)
     setCurrentPage(1)
+    clearSelection()
   }
 
   function changeGroupFilter(value: 'all' | 'ungrouped' | number) {
     setGroupFilter(value)
     setCurrentPage(1)
+    clearSelection()
   }
 
   function changeStatusFilter(value: MonitorStatusFilter) {
     setStatusFilter(value)
     setCurrentPage(1)
+    clearSelection()
   }
 
   function changePageSize(value: PageSize) {
     setPageSize(value)
     setCurrentPage(1)
+    clearSelection()
   }
 
   function goToPreviousPage() {
+    if (activePage <= 1) {
+      return
+    }
+
+    clearSelection()
     setCurrentPage(Math.max(1, activePage - 1))
   }
 
   function goToNextPage() {
+    if (activePage >= pageCount) {
+      return
+    }
+
+    clearSelection()
     setCurrentPage(Math.min(pageCount, activePage + 1))
   }
 
@@ -734,30 +794,145 @@ async function changeRange(range: TimeRange) {
   await loadMonitorAnalytics(selectedMonitor.id, range)
 }
 
+  function toggleMonitorSelection(monitorID: number) {
+    setSelectedMonitorIds((previous) => {
+      const next = new Set(previous)
+
+      if (next.has(monitorID)) {
+        next.delete(monitorID)
+      } else {
+        next.add(monitorID)
+      }
+
+      return next
+    })
+  }
+
+  // Select All is scoped to the current page. Adding page IDs to the existing
+  // page-only set also keeps the toggle reversible when some are selected.
+  function toggleSelectAllOnPage() {
+    if (pageMonitorIds.length === 0) {
+      return
+    }
+
+    setSelectedMonitorIds((previous) => {
+      const next = new Set(previous)
+
+      if (allPageSelected) {
+        for (const id of pageMonitorIds) {
+          next.delete(id)
+        }
+      } else {
+        for (const id of pageMonitorIds) {
+          next.add(id)
+        }
+      }
+
+      return next
+    })
+  }
+
+  // Reuses the existing single-monitor update path: PUT the monitor with only
+  // the enabled flag changed. The backend preserves omitted fields, so
+  // maintenance, group, type, target, interval, config, and history stay intact.
+  async function updateMonitorEnabled(
+    monitor: MonitorStatus,
+    enabled: boolean,
+  ) {
+    const response = await fetch(`/api/v1/monitors/${monitor.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: monitor.name,
+        monitor_type: monitor.monitor_type,
+        target: monitor.target,
+        interval_seconds: monitor.interval_seconds,
+        timeout_seconds: monitor.timeout_seconds,
+        enabled,
+        config: monitor.config,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+  }
+
+  // Reuses the dedicated maintenance endpoint. It only flips the boolean; it
+  // never synthesizes a check or mutates alert state.
+  async function updateMonitorMaintenance(
+    monitor: MonitorStatus,
+    maintenance: boolean,
+  ) {
+    const response = await fetch(
+      `/api/v1/monitors/${monitor.id}/maintenance`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ maintenance }),
+      },
+    )
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+  }
+
+  // Executes one request per selected monitor and reports partial failures
+  // rather than treating the batch as all-or-nothing.
+  async function runBulkAction(action: BulkMonitorAction) {
+    if (bulkActionLoading) {
+      return
+    }
+
+    const targets = pagedMonitors.filter((monitor) =>
+      selectedMonitorIds.has(monitor.id),
+    )
+
+    if (targets.length === 0) {
+      return
+    }
+
+    setBulkActionLoading(true)
+    setBulkActionError('')
+
+    const results = await Promise.allSettled(
+      targets.map((monitor) => {
+        switch (action) {
+          case 'enable':
+            return updateMonitorEnabled(monitor, true)
+          case 'disable':
+            return updateMonitorEnabled(monitor, false)
+          case 'enter-maintenance':
+            return updateMonitorMaintenance(monitor, true)
+          case 'exit-maintenance':
+            return updateMonitorMaintenance(monitor, false)
+        }
+      }),
+    )
+
+    const failedCount = results.filter(
+      (result) => result.status === 'rejected',
+    ).length
+
+    clearSelection()
+    await loadMonitors()
+    setBulkActionLoading(false)
+
+    if (failedCount > 0) {
+      setBulkActionError(
+        `${failedCount} of ${targets.length} monitors could not be updated.`,
+      )
+    }
+  }
+
   async function toggleMonitor(monitor: MonitorStatus) {
     try {
-      const response = await fetch(
-        `/api/v1/monitors/${monitor.id}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            name: monitor.name,
-            monitor_type: monitor.monitor_type,
-            target: monitor.target,
-            interval_seconds: monitor.interval_seconds,
-            timeout_seconds: monitor.timeout_seconds,
-            enabled: !monitor.enabled,
-            config: monitor.config,
-          }),
-        },
-      )
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
+      await updateMonitorEnabled(monitor, !monitor.enabled)
 
       setSelectedMonitor(null)
       await loadMonitors()
@@ -784,20 +959,7 @@ async function changeRange(range: TimeRange) {
     }
 
     try {
-      const response = await fetch(
-        `/api/v1/monitors/${monitor.id}/maintenance`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ maintenance: entering }),
-        },
-      )
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
+      await updateMonitorMaintenance(monitor, entering)
 
       setSelectedMonitor(null)
       await loadMonitors()
@@ -1368,15 +1530,122 @@ function buildResponseChart(data: MonitorChartPoint[]) {
 
           {!loading && filteredMonitors.length > 0 && (
             <>
+              <div className="monitor-selection-bar">
+                <label className="select-all-control">
+                  <input
+                    ref={selectAllOnPageRef}
+                    type="checkbox"
+                    checked={allPageSelected}
+                    onChange={toggleSelectAllOnPage}
+                    disabled={
+                      pageMonitorIds.length === 0 ||
+                      bulkActionLoading
+                    }
+                  />
+                  <span>Select all on this page</span>
+                </label>
+
+                <span
+                  className="selection-count"
+                  aria-live="polite"
+                >
+                  {selectedCount} selected
+                </span>
+              </div>
+
+              {selectedCount > 0 && (
+                <div
+                  className="bulk-action-bar"
+                  role="toolbar"
+                  aria-label="Bulk monitor actions"
+                >
+                  <button
+                    type="button"
+                    onClick={() => runBulkAction('enable')}
+                    disabled={bulkActionLoading}
+                  >
+                    Enable
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => runBulkAction('disable')}
+                    disabled={bulkActionLoading}
+                  >
+                    Disable
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      runBulkAction('enter-maintenance')
+                    }
+                    disabled={bulkActionLoading}
+                  >
+                    Enter Maintenance
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      runBulkAction('exit-maintenance')
+                    }
+                    disabled={bulkActionLoading}
+                  >
+                    Exit Maintenance
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    disabled={bulkActionLoading}
+                  >
+                    Clear Selection
+                  </button>
+                </div>
+              )}
+
+              {bulkActionError && (
+                <div
+                  className="message error bulk-action-error"
+                  role="alert"
+                >
+                  {bulkActionError}
+                </div>
+              )}
+
               <div className="monitor-list">
                 {pagedMonitors.map((monitor) => (
                   <article
-                    className="monitor-card"
+                    className={
+                      selectedMonitorIds.has(monitor.id)
+                        ? 'monitor-card selected'
+                        : 'monitor-card'
+                    }
                     key={monitor.id}
                     onClick={() =>
                       openMonitorDetails(monitor)
                     }
                   >
+                    <label
+                      className="monitor-select-control"
+                      onClick={(event) =>
+                        event.stopPropagation()
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedMonitorIds.has(
+                          monitor.id,
+                        )}
+                        onChange={() =>
+                          toggleMonitorSelection(monitor.id)
+                        }
+                        disabled={bulkActionLoading}
+                        aria-label={`Select monitor ${monitor.name}`}
+                      />
+                    </label>
+
                     <div className="monitor-main">
                       <div
                         className={`status-dot ${
