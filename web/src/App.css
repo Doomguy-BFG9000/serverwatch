@@ -234,6 +234,24 @@ button {
   color: #172033;
 }
 
+.status-filter {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #778196;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-filter select {
+  min-width: 150px;
+  border: 1px solid #d9dfeb;
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: #ffffff;
+  color: #172033;
+}
+
 /* Accessible visually-hidden label text. */
 .sr-only {
   position: absolute;
@@ -814,6 +832,15 @@ button {
   }
 
   .monitor-search input {
+    width: 100%;
+  }
+
+  .status-filter {
+    width: 100%;
+  }
+
+  .status-filter select {
+    flex: 1;
     width: 100%;
   }
 }

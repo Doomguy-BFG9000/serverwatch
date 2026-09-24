@@ -118,6 +118,17 @@ type MonitorSort =
   | 'newest'
   | 'oldest'
 
+// MonitorStatusFilter mirrors the Phase 0.40 dashboard summary buckets plus an
+// "all" sentinel. Each monitor belongs to exactly one bucket via monitorState()
+// so this filter cannot drift from the dashboard or the monitor cards.
+type MonitorStatusFilter =
+  | 'all'
+  | 'up'
+  | 'down'
+  | 'maintenance'
+  | 'disabled'
+  | 'pending'
+
 type AlertStatus = {
   email_enabled: boolean
   smtp_configured: boolean
@@ -152,6 +163,22 @@ const monitorStatusRank: Record<string, number> = {
 
 function monitorStatusRankValue(kind: string): number {
   return monitorStatusRank[kind] ?? 5
+}
+
+// Collapses a monitorState() presentation kind onto a status filter bucket.
+// Disabled maps from the internal 'paused' kind, and any enabled kind that is
+// neither up nor down (including unknown or missing statuses) is Pending /
+// No Data. Reading the kind keeps a single source of truth for precedence:
+// Disabled overrides Maintenance, which overrides the stored status.
+const statusFilterByKind: Record<string, MonitorStatusFilter> = {
+  up: 'up',
+  down: 'down',
+  maintenance: 'maintenance',
+  paused: 'disabled',
+}
+
+function statusFilterBucketForKind(kind: string): MonitorStatusFilter {
+  return statusFilterByKind[kind] ?? 'pending'
 }
 
 function compareMonitorName(
@@ -285,6 +312,8 @@ function App() {
   const [monitorSearch, setMonitorSearch] = useState('')
   const [monitorSort, setMonitorSort] =
     useState<MonitorSort>('default')
+  const [statusFilter, setStatusFilter] =
+    useState<MonitorStatusFilter>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [alertStatus, setAlertStatus] = useState<AlertStatus | null>(null)
@@ -537,11 +566,11 @@ function App() {
     return counts
   }, [monitors])
 
-  const searchActive = monitorSearch.trim().length > 0
-
   const filteredMonitors = useMemo(() => {
     let visible = monitors
 
+    // Pipeline order: Group -> Status -> Search -> Sort. Each step only narrows
+    // the working set; no step resets another control's value.
     if (groupFilter === 'all') {
       visible = monitors
     } else if (groupFilter === 'ungrouped') {
@@ -549,6 +578,14 @@ function App() {
     } else {
       visible = monitors.filter(
         (monitor) => monitor.group_id === groupFilter,
+      )
+    }
+
+    if (statusFilter !== 'all') {
+      visible = visible.filter(
+        (monitor) =>
+          statusFilterBucketForKind(monitorState(monitor).kind) ===
+          statusFilter,
       )
     }
 
@@ -567,7 +604,7 @@ function App() {
       monitorSort,
       (monitor) => monitorState(monitor).kind,
     )
-  }, [monitors, groupFilter, monitorSearch, monitorSort])
+  }, [monitors, groupFilter, statusFilter, monitorSearch, monitorSort])
 
   function formatLastChecked(value?: string) {
     if (!value) {
@@ -1206,6 +1243,25 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                 </select>
               </label>
 
+              <label className="status-filter">
+                <span>Status</span>
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(
+                      event.target.value as MonitorStatusFilter,
+                    )
+                  }
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="up">Up</option>
+                  <option value="down">Down</option>
+                  <option value="maintenance">Maintenance</option>
+                  <option value="disabled">Disabled</option>
+                  <option value="pending">Pending / No Data</option>
+                </select>
+              </label>
+
               <button
                 type="button"
                 onClick={() => setShowGroupManager(true)}
@@ -1246,9 +1302,7 @@ function buildResponseChart(data: MonitorChartPoint[]) {
             monitors.length > 0 &&
             filteredMonitors.length === 0 && (
               <div className="message">
-                {searchActive
-                  ? 'No monitors match your search.'
-                  : 'No monitors match this group filter.'}
+                No monitors match the current filters.
               </div>
             )}
 
