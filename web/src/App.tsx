@@ -130,12 +130,17 @@ type MonitorStatusFilter =
   | 'pending'
 
 // Bulk actions are strictly per-monitor property changes. They intentionally
-// exclude delete and group assignment for this phase.
+// exclude delete. Group assignment needs a destination value, so it uses the
+// dedicated runBulkGroupAssignment() helper instead of this union.
 type BulkMonitorAction =
   | 'enable'
   | 'disable'
   | 'enter-maintenance'
   | 'exit-maintenance'
+
+// Bulk group destination is a transient, page-local choice. The empty string
+// is the non-action placeholder shown until the user picks a destination.
+type BulkGroupDestination = number | 'ungrouped'
 
 // Monitors per page. Keep this list adjacent to the type so the selector
 // options cannot drift from the state that bounds them.
@@ -337,6 +342,9 @@ function App() {
   )
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
   const [bulkActionError, setBulkActionError] = useState('')
+  const [bulkGroupDestination, setBulkGroupDestination] = useState<
+    BulkGroupDestination | ''
+  >('')
   const selectAllOnPageRef = useRef<HTMLInputElement | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -882,6 +890,36 @@ async function changeRange(range: TimeRange) {
     }
   }
 
+  // Reuses the established single-monitor update payload (the same shape the
+  // Edit monitor form sends) with only group_id changed. The backend applies
+  // the explicit group_id and preserves maintenance, history, and alert state;
+  // every other monitor property is sent back unchanged.
+  async function updateMonitorGroup(
+    monitor: MonitorStatus,
+    groupID: number | null,
+  ) {
+    const response = await fetch(`/api/v1/monitors/${monitor.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: monitor.name,
+        monitor_type: monitor.monitor_type,
+        target: monitor.target,
+        interval_seconds: monitor.interval_seconds,
+        timeout_seconds: monitor.timeout_seconds,
+        enabled: monitor.enabled,
+        config: monitor.config,
+        group_id: groupID,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+  }
+
   // Executes one request per selected monitor and reports partial failures
   // rather than treating the batch as all-or-nothing.
   async function runBulkAction(action: BulkMonitorAction) {
@@ -926,6 +964,49 @@ async function changeRange(range: TimeRange) {
     if (failedCount > 0) {
       setBulkActionError(
         `${failedCount} of ${targets.length} monitors could not be updated.`,
+      )
+    }
+  }
+
+  // Moves the selected current-page monitors to the chosen destination. Mirrors
+  // runBulkAction: one request per monitor, no optimistic local group change,
+  // partial failures counted, monitor data reloaded, selection cleared.
+  async function runBulkGroupAssignment() {
+    if (bulkActionLoading || bulkGroupDestination === '') {
+      return
+    }
+
+    const destination = bulkGroupDestination
+    const targets = pagedMonitors.filter((monitor) =>
+      selectedMonitorIds.has(monitor.id),
+    )
+
+    if (targets.length === 0) {
+      return
+    }
+
+    // "Ungrouped" is the explicit null group; real groups send their numeric ID.
+    const groupID = destination === 'ungrouped' ? null : destination
+
+    setBulkActionLoading(true)
+    setBulkActionError('')
+
+    const results = await Promise.allSettled(
+      targets.map((monitor) => updateMonitorGroup(monitor, groupID)),
+    )
+
+    const failedCount = results.filter(
+      (result) => result.status === 'rejected',
+    ).length
+
+    clearSelection()
+    setBulkGroupDestination('')
+    await loadMonitors()
+    setBulkActionLoading(false)
+
+    if (failedCount > 0) {
+      setBulkActionError(
+        `${failedCount} of ${targets.length} monitors could not be moved.`,
       )
     }
   }
@@ -1593,6 +1674,48 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                     disabled={bulkActionLoading}
                   >
                     Exit Maintenance
+                  </button>
+
+                  <label className="bulk-group-control">
+                    <span>Group</span>
+                    <select
+                      value={
+                        bulkGroupDestination === ''
+                          ? ''
+                          : String(bulkGroupDestination)
+                      }
+                      onChange={(event) => {
+                        const value = event.target.value
+
+                        setBulkGroupDestination(
+                          value === ''
+                            ? ''
+                            : value === 'ungrouped'
+                              ? 'ungrouped'
+                              : Number(value),
+                        )
+                      }}
+                      disabled={bulkActionLoading}
+                    >
+                      <option value="">Choose group...</option>
+                      <option value="ungrouped">Ungrouped</option>
+                      {groups.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={runBulkGroupAssignment}
+                    disabled={
+                      bulkActionLoading ||
+                      bulkGroupDestination === ''
+                    }
+                  >
+                    Move to Group
                   </button>
 
                   <button

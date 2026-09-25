@@ -374,6 +374,30 @@ button {
   opacity: 0.55;
 }
 
+.bulk-group-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.bulk-group-control select {
+  min-width: 160px;
+  max-width: 100%;
+  border: 1px solid #d9dfeb;
+  border-radius: 9px;
+  padding: 8px 12px;
+  background: #ffffff;
+  color: #172033;
+}
+
+.bulk-group-control select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 /* Pagination */
 
 .pagination-bar {
@@ -989,6 +1013,17 @@ button {
   .status-filter select {
     flex: 1;
     width: 100%;
+  }
+
+  /* Let the bulk group destination take a full row on narrow screens so the
+     selector and its Move to Group button stay readable without overflow. */
+  .bulk-group-control {
+    width: 100%;
+  }
+
+  .bulk-group-control select {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .pagination-bar {
