@@ -598,6 +598,62 @@ function App() {
     return counts
   }, [monitors])
 
+  // Dashboard summary cards double as shortcuts into the existing Status
+  // filter. This array is presentation metadata only: clicks always go
+  // through changeStatusFilter() so the Phase 0.41 pagination reset and bulk
+  // selection clearing stay in one place, and the active card is derived from
+  // statusFilter rather than tracked as separate state.
+  const summaryCards: Array<{
+    filter: MonitorStatusFilter
+    className: string
+    label: string
+    count: number
+    actionLabel: string
+  }> = [
+    {
+      filter: 'all',
+      className: 'total',
+      label: 'Total Monitors',
+      count: summary.total,
+      actionLabel: 'Show all monitor statuses',
+    },
+    {
+      filter: 'up',
+      className: 'up',
+      label: 'Up',
+      count: summary.up,
+      actionLabel: 'Filter monitors by Up status',
+    },
+    {
+      filter: 'down',
+      className: 'down',
+      label: 'Down',
+      count: summary.down,
+      actionLabel: 'Filter monitors by Down status',
+    },
+    {
+      filter: 'maintenance',
+      className: 'maintenance',
+      label: 'Maintenance',
+      count: summary.maintenance,
+      actionLabel: 'Filter monitors by Maintenance status',
+    },
+    {
+      filter: 'disabled',
+      className: 'disabled',
+      label: 'Disabled',
+      count: summary.disabled,
+      actionLabel: 'Filter monitors by Disabled status',
+    },
+    {
+      filter: 'pending',
+      className: 'pending',
+      label: 'Pending / No Data',
+      count: summary.pending,
+      actionLabel: 'Filter monitors by Pending / No Data status',
+    },
+  ]
+
   const filteredMonitors = useMemo(() => {
     let visible = monitors
 
@@ -1438,35 +1494,19 @@ function buildResponseChart(data: MonitorChartPoint[]) {
           className="summary-grid"
           aria-label="Monitor health summary"
         >
-          <div className="summary-card total">
-            <span>Total Monitors</span>
-            <strong>{summary.total}</strong>
-          </div>
-
-          <div className="summary-card up">
-            <span>Up</span>
-            <strong>{summary.up}</strong>
-          </div>
-
-          <div className="summary-card down">
-            <span>Down</span>
-            <strong>{summary.down}</strong>
-          </div>
-
-          <div className="summary-card maintenance">
-            <span>Maintenance</span>
-            <strong>{summary.maintenance}</strong>
-          </div>
-
-          <div className="summary-card disabled">
-            <span>Disabled</span>
-            <strong>{summary.disabled}</strong>
-          </div>
-
-          <div className="summary-card pending">
-            <span>Pending / No Data</span>
-            <strong>{summary.pending}</strong>
-          </div>
+          {summaryCards.map((card) => (
+            <button
+              key={card.filter}
+              type="button"
+              className={`summary-card ${card.className}`}
+              aria-pressed={statusFilter === card.filter}
+              aria-label={`${card.label}: ${card.count}. ${card.actionLabel}`}
+              onClick={() => changeStatusFilter(card.filter)}
+            >
+              <span>{card.label}</span>
+              <strong>{card.count}</strong>
+            </button>
+          ))}
         </section>
 
         <section className="alert-section">
