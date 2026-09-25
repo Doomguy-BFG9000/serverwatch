@@ -87,6 +87,10 @@ func main() {
 		monitorHandler.SetMaintenance,
 	)
 	mux.HandleFunc(
+		"PUT /api/v1/monitors/{id}/favorite",
+		monitorHandler.SetFavorite,
+	)
+	mux.HandleFunc(
 		"GET /api/v1/monitors/{id}/stats",
 		monitorHandler.Stats,
 	)

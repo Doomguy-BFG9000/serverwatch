@@ -196,6 +196,7 @@ func (store *fakeGroupMonitorStore) ListStatus(
 			Config:          monitor.Config,
 			Enabled:         monitor.Enabled,
 			Maintenance:     monitor.Maintenance,
+			Favorite:        monitor.Favorite,
 			IntervalSeconds: monitor.IntervalSeconds,
 			TimeoutSeconds:  monitor.TimeoutSeconds,
 			Status:          "pending",
@@ -272,6 +273,22 @@ func (store *fakeGroupMonitorStore) SetMaintenance(
 	}
 
 	monitor.Maintenance = maintenance
+	monitor.UpdatedAt = time.Unix(1, 0).UTC()
+	store.monitors[id] = monitor
+	return monitor, nil
+}
+
+func (store *fakeGroupMonitorStore) SetFavorite(
+	_ context.Context,
+	id int64,
+	favorite bool,
+) (service.Monitor, error) {
+	monitor, ok := store.monitors[id]
+	if !ok {
+		return service.Monitor{}, repository.ErrMonitorNotFound
+	}
+
+	monitor.Favorite = favorite
 	monitor.UpdatedAt = time.Unix(1, 0).UTC()
 	store.monitors[id] = monitor
 	return monitor, nil

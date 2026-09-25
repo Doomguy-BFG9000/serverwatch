@@ -15,6 +15,7 @@ type Monitor struct {
 	TimeoutSeconds  int            `json:"timeout_seconds"`
 	Enabled         bool           `json:"enabled"`
 	Maintenance     bool           `json:"maintenance"`
+	Favorite        bool           `json:"favorite"`
 	GroupID         *int64         `json:"group_id"`
 	GroupName       string         `json:"group_name"`
 	CreatedAt       time.Time      `json:"created_at"`
@@ -107,6 +108,7 @@ type MonitorStatus struct {
 	Config          *MonitorConfig `json:"config,omitempty"`
 	Enabled         bool           `json:"enabled"`
 	Maintenance     bool           `json:"maintenance"`
+	Favorite        bool           `json:"favorite"`
 	IntervalSeconds int            `json:"interval_seconds"`
 	TimeoutSeconds  int            `json:"timeout_seconds"`
 	Status          string         `json:"status"`

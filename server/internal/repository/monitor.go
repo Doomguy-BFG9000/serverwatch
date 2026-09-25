@@ -69,6 +69,7 @@ func (r *MonitorRepository) Create(
 				timeout_seconds,
 				enabled,
 				maintenance,
+				favorite,
 				group_id,
 				created_at,
 				updated_at
@@ -83,6 +84,7 @@ func (r *MonitorRepository) Create(
 			inserted.timeout_seconds,
 			inserted.enabled,
 			inserted.maintenance,
+			inserted.favorite,
 			inserted.group_id,
 			COALESCE(monitor_groups.name, ''),
 			inserted.created_at,
@@ -107,6 +109,7 @@ func (r *MonitorRepository) Create(
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
 		&monitor.Maintenance,
+		&monitor.Favorite,
 		&monitor.GroupID,
 		&monitor.GroupName,
 		&monitor.CreatedAt,
@@ -136,6 +139,7 @@ func (r *MonitorRepository) List(
 			m.timeout_seconds,
 			m.enabled,
 			m.maintenance,
+			m.favorite,
 			m.group_id,
 			COALESCE(monitor_groups.name, ''),
 			m.created_at,
@@ -166,6 +170,7 @@ func (r *MonitorRepository) List(
 			&monitor.TimeoutSeconds,
 			&monitor.Enabled,
 			&monitor.Maintenance,
+			&monitor.Favorite,
 			&monitor.GroupID,
 			&monitor.GroupName,
 			&monitor.CreatedAt,
@@ -201,6 +206,7 @@ func (r *MonitorRepository) GetByID(
 			m.timeout_seconds,
 			m.enabled,
 			m.maintenance,
+			m.favorite,
 			m.group_id,
 			COALESCE(monitor_groups.name, ''),
 			m.created_at,
@@ -220,6 +226,7 @@ func (r *MonitorRepository) GetByID(
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
 		&monitor.Maintenance,
+		&monitor.Favorite,
 		&monitor.GroupID,
 		&monitor.GroupName,
 		&monitor.CreatedAt,
@@ -441,6 +448,7 @@ func (r *MonitorRepository) ListStatus(
 			m.config,
 			m.enabled,
 			m.maintenance,
+			m.favorite,
 			m.interval_seconds,
 			m.timeout_seconds,
 			COALESCE(lr.status, 'pending') AS status,
@@ -487,6 +495,7 @@ func (r *MonitorRepository) ListStatus(
 			&config,
 			&item.Enabled,
 			&item.Maintenance,
+			&item.Favorite,
 			&item.IntervalSeconds,
 			&item.TimeoutSeconds,
 			&item.Status,
@@ -603,6 +612,7 @@ func (r *MonitorRepository) Update(
 				timeout_seconds,
 				enabled,
 				maintenance,
+				favorite,
 				group_id,
 				created_at,
 				updated_at
@@ -617,6 +627,7 @@ func (r *MonitorRepository) Update(
 			updated.timeout_seconds,
 			updated.enabled,
 			updated.maintenance,
+			updated.favorite,
 			updated.group_id,
 			COALESCE(monitor_groups.name, ''),
 			updated.created_at,
@@ -646,6 +657,7 @@ func (r *MonitorRepository) Update(
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
 		&monitor.Maintenance,
+		&monitor.Favorite,
 		&monitor.GroupID,
 		&monitor.GroupName,
 		&monitor.CreatedAt,
@@ -683,6 +695,7 @@ const setMaintenanceQuery = `
 			timeout_seconds,
 			enabled,
 			maintenance,
+			favorite,
 			group_id,
 			created_at,
 			updated_at
@@ -697,6 +710,7 @@ const setMaintenanceQuery = `
 		updated.timeout_seconds,
 		updated.enabled,
 		updated.maintenance,
+		updated.favorite,
 		updated.group_id,
 		COALESCE(monitor_groups.name, ''),
 		updated.created_at,
@@ -732,6 +746,94 @@ func (r *MonitorRepository) SetMaintenance(
 		&monitor.TimeoutSeconds,
 		&monitor.Enabled,
 		&monitor.Maintenance,
+		&monitor.Favorite,
+		&monitor.GroupID,
+		&monitor.GroupName,
+		&monitor.CreatedAt,
+		&monitor.UpdatedAt,
+	)
+	monitor.Config = decodeMonitorConfig(config)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return service.Monitor{}, ErrMonitorNotFound
+	}
+
+	return monitor, err
+}
+
+// setFavoriteQuery toggles only monitors.favorite. It deliberately does not
+// read or write monitor_results or monitor_alert_state, and it never touches
+// enabled, maintenance, group_id, or config, so marking a monitor as a favorite
+// stays metadata-only and cannot affect monitoring execution or alerting.
+const setFavoriteQuery = `
+	WITH updated AS (
+		UPDATE monitors
+		SET
+			favorite = $2,
+			updated_at = NOW()
+		WHERE id = $1
+		RETURNING
+			id,
+			name,
+			monitor_type,
+			target,
+			config,
+			interval_seconds,
+			timeout_seconds,
+			enabled,
+			maintenance,
+			favorite,
+			group_id,
+			created_at,
+			updated_at
+	)
+	SELECT
+		updated.id,
+		updated.name,
+		updated.monitor_type,
+		updated.target,
+		updated.config,
+		updated.interval_seconds,
+		updated.timeout_seconds,
+		updated.enabled,
+		updated.maintenance,
+		updated.favorite,
+		updated.group_id,
+		COALESCE(monitor_groups.name, ''),
+		updated.created_at,
+		updated.updated_at
+	FROM updated
+	LEFT JOIN monitor_groups ON monitor_groups.id = updated.group_id
+`
+
+// SetFavorite toggles the persistent favorite flag for one monitor and returns
+// the updated representation. It only writes monitors.favorite, so monitor
+// health, enabled/maintenance state, group, config, check history, and alert
+// state are all preserved.
+func (r *MonitorRepository) SetFavorite(
+	ctx context.Context,
+	id int64,
+	favorite bool,
+) (service.Monitor, error) {
+	var monitor service.Monitor
+	var config []byte
+
+	err := r.DB.QueryRow(
+		ctx,
+		setFavoriteQuery,
+		id,
+		favorite,
+	).Scan(
+		&monitor.ID,
+		&monitor.Name,
+		&monitor.MonitorType,
+		&monitor.Target,
+		&config,
+		&monitor.IntervalSeconds,
+		&monitor.TimeoutSeconds,
+		&monitor.Enabled,
+		&monitor.Maintenance,
+		&monitor.Favorite,
 		&monitor.GroupID,
 		&monitor.GroupName,
 		&monitor.CreatedAt,

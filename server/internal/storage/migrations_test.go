@@ -46,3 +46,22 @@ func TestMonitorMaintenanceMigration(t *testing.T) {
 		}
 	}
 }
+
+func TestMonitorFavoritesMigration(t *testing.T) {
+	contents, err := migrationFiles.ReadFile("migrations/006_monitor_favorites.sql")
+	if err != nil {
+		t.Fatalf("read monitor favorites migration: %v", err)
+	}
+	migration := string(contents)
+
+	required := []string{
+		"ALTER TABLE monitors",
+		"ADD COLUMN IF NOT EXISTS favorite BOOLEAN NOT NULL DEFAULT FALSE",
+	}
+
+	for _, fragment := range required {
+		if !strings.Contains(migration, fragment) {
+			t.Fatalf("migration does not contain %q", fragment)
+		}
+	}
+}

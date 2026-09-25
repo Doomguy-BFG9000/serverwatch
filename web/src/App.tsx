@@ -9,6 +9,7 @@ type MonitorStatus = {
   target: string
   enabled: boolean
   maintenance: boolean
+  favorite: boolean
   status: string
   response_time_ms?: number
   status_code?: number
@@ -128,6 +129,11 @@ type MonitorStatusFilter =
   | 'maintenance'
   | 'disabled'
   | 'pending'
+
+// Favorites filter is a frontend-only, single-page-session choice. It narrows
+// the visible list and is deliberately never persisted to localStorage,
+// sessionStorage, the URL, or backend preferences.
+type MonitorFavoriteFilter = 'all' | 'favorites'
 
 // Bulk actions are strictly per-monitor property changes. They intentionally
 // exclude delete. Group assignment needs a destination value, so it uses the
@@ -333,6 +339,8 @@ function App() {
     useState<MonitorSort>('default')
   const [statusFilter, setStatusFilter] =
     useState<MonitorStatusFilter>('all')
+  const [favoriteFilter, setFavoriteFilter] =
+    useState<MonitorFavoriteFilter>('all')
   const [pageSize, setPageSize] = useState<PageSize>(defaultPageSize)
   const [currentPage, setCurrentPage] = useState(1)
   // Selection is a page-scoped set of monitor IDs. It is never persisted and is
@@ -345,6 +353,13 @@ function App() {
   const [bulkGroupDestination, setBulkGroupDestination] = useState<
     BulkGroupDestination | ''
   >('')
+  // Favorite toggles are tracked per monitor so only the clicked card's button
+  // is disabled while its request is in flight. The list is reloaded from the
+  // backend on success rather than optimistically mutated.
+  const [favoriteBusyIds, setFavoriteBusyIds] = useState<Set<number>>(
+    new Set(),
+  )
+  const [favoriteError, setFavoriteError] = useState('')
   const selectAllOnPageRef = useRef<HTMLInputElement | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -657,8 +672,8 @@ function App() {
   const filteredMonitors = useMemo(() => {
     let visible = monitors
 
-    // Pipeline order: Group -> Status -> Search -> Sort. Each step only narrows
-    // the working set; no step resets another control's value.
+    // Pipeline order: Group -> Status -> Favorites -> Search -> Sort. Each step
+    // only narrows the working set; no step resets another control's value.
     if (groupFilter === 'all') {
       visible = monitors
     } else if (groupFilter === 'ungrouped') {
@@ -677,6 +692,10 @@ function App() {
       )
     }
 
+    if (favoriteFilter === 'favorites') {
+      visible = visible.filter((monitor) => monitor.favorite)
+    }
+
     const query = monitorSearch.trim().toLowerCase()
 
     if (query !== '') {
@@ -692,7 +711,14 @@ function App() {
       monitorSort,
       (monitor) => monitorState(monitor).kind,
     )
-  }, [monitors, groupFilter, statusFilter, monitorSearch, monitorSort])
+  }, [
+    monitors,
+    groupFilter,
+    statusFilter,
+    favoriteFilter,
+    monitorSearch,
+    monitorSort,
+  ])
 
   // Pagination runs last, after Group + Status + Search + Sort have produced
   // the visible set. pageCount is kept at least 1 so an empty result still
@@ -762,6 +788,15 @@ function App() {
 
   function changeStatusFilter(value: MonitorStatusFilter) {
     setStatusFilter(value)
+    setCurrentPage(1)
+    clearSelection()
+  }
+
+  // Changing Favorites narrows the list before Search/Sort/Pagination, so the
+  // view snaps back to page 1 and the page-scoped selection is cleared. Group,
+  // Status, Search, Sort, and Page Size are intentionally left untouched.
+  function changeFavoriteFilter(value: MonitorFavoriteFilter) {
+    setFavoriteFilter(value)
     setCurrentPage(1)
     clearSelection()
   }
@@ -946,6 +981,29 @@ async function changeRange(range: TimeRange) {
     }
   }
 
+  // Uses the dedicated favorite endpoint, which only flips the persistent
+  // boolean. Enabled, maintenance, group, config, history, and alert state are
+  // untouched by the backend.
+  async function updateMonitorFavorite(
+    monitor: MonitorStatus,
+    favorite: boolean,
+  ) {
+    const response = await fetch(
+      `/api/v1/monitors/${monitor.id}/favorite`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ favorite }),
+      },
+    )
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+  }
+
   // Reuses the established single-monitor update payload (the same shape the
   // Edit monitor form sends) with only group_id changed. The backend applies
   // the explicit group_id and preserves maintenance, history, and alert state;
@@ -1106,6 +1164,42 @@ async function changeRange(range: TimeRange) {
           ? `Failed to update maintenance mode: ${err.message}`
           : 'Failed to update maintenance mode',
       )
+    }
+  }
+
+  // Favorite toggling follows the same backend-truth pattern as the other card
+  // actions: disable the button while the request is in flight, then reload the
+  // monitor list after success. Failures surface as a concise inline error and
+  // leave the stored state unchanged.
+  async function toggleMonitorFavorite(monitor: MonitorStatus) {
+    if (favoriteBusyIds.has(monitor.id)) {
+      return
+    }
+
+    setFavoriteBusyIds((previous) => {
+      const next = new Set(previous)
+
+      next.add(monitor.id)
+      return next
+    })
+    setFavoriteError('')
+
+    try {
+      await updateMonitorFavorite(monitor, !monitor.favorite)
+      await loadMonitors()
+    } catch (err) {
+      setFavoriteError(
+        err instanceof Error
+          ? `Failed to update favorite: ${err.message}`
+          : 'Failed to update favorite',
+      )
+    } finally {
+      setFavoriteBusyIds((previous) => {
+        const next = new Set(previous)
+
+        next.delete(monitor.id)
+        return next
+      })
     }
   }
 
@@ -1605,6 +1699,21 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                 </select>
               </label>
 
+              <label className="favorite-filter">
+                <span>Favorites</span>
+                <select
+                  value={favoriteFilter}
+                  onChange={(event) =>
+                    changeFavoriteFilter(
+                      event.target.value as MonitorFavoriteFilter,
+                    )
+                  }
+                >
+                  <option value="all">All Monitors</option>
+                  <option value="favorites">Favorites Only</option>
+                </select>
+              </label>
+
               <button
                 type="button"
                 onClick={() => setShowGroupManager(true)}
@@ -1777,6 +1886,15 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                 </div>
               )}
 
+              {favoriteError && (
+                <div
+                  className="message error favorite-error"
+                  role="alert"
+                >
+                  {favoriteError}
+                </div>
+              )}
+
               <div className="monitor-list">
                 {pagedMonitors.map((monitor) => (
                   <article
@@ -1833,6 +1951,36 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                           >
                             {monitor.group_name || 'Ungrouped'}
                           </span>
+                          <button
+                            type="button"
+                            className={
+                              monitor.favorite
+                                ? 'favorite-toggle active'
+                                : 'favorite-toggle'
+                            }
+                            aria-pressed={monitor.favorite}
+                            aria-label={
+                              monitor.favorite
+                                ? `Remove ${monitor.name} from favorites`
+                                : `Add ${monitor.name} to favorites`
+                            }
+                            title={
+                              monitor.favorite
+                                ? 'Remove from favorites'
+                                : 'Add to favorites'
+                            }
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              toggleMonitorFavorite(monitor)
+                            }}
+                            disabled={favoriteBusyIds.has(
+                              monitor.id,
+                            )}
+                          >
+                            <span aria-hidden="true">
+                              {monitor.favorite ? '★' : '☆'}
+                            </span>
+                          </button>
                         </div>
                         <p>
                           {monitor.monitor_type.toUpperCase()} ·{' '}

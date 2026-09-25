@@ -23,6 +23,7 @@ type MonitorStore interface {
 	ListResultsSince(context.Context, int64, int, int) ([]service.MonitorResult, error)
 	Update(context.Context, int64, service.UpdateMonitorInput) (service.Monitor, error)
 	SetMaintenance(context.Context, int64, bool) (service.Monitor, error)
+	SetFavorite(context.Context, int64, bool) (service.Monitor, error)
 	GetStatsSince(context.Context, int64, int) (service.MonitorStats, error)
 	ListChartPoints(context.Context, int64, int, int) ([]service.MonitorChartPoint, error)
 }
@@ -493,6 +494,57 @@ func (h *MonitorHandler) SetMaintenance(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
 			"error": "failed to set maintenance mode",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, monitor)
+}
+
+// SetFavorite marks or unmarks a single monitor as a favorite. It only flips
+// the persistent boolean: no checker is run, no monitor result is written, and
+// enabled, maintenance, group, config, and alert state are left untouched. The
+// request body must contain a JSON boolean "favorite" field; omitting it is
+// rejected.
+func (h *MonitorHandler) SetFavorite(w http.ResponseWriter, r *http.Request) {
+	id, err := parseMonitorID(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid monitor id",
+		})
+		return
+	}
+
+	var input struct {
+		Favorite *bool `json:"favorite"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid_json",
+		})
+		return
+	}
+	if input.Favorite == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "favorite must be a boolean",
+		})
+		return
+	}
+
+	monitor, err := h.Repository.SetFavorite(
+		r.Context(),
+		id,
+		*input.Favorite,
+	)
+	if errors.Is(err, repository.ErrMonitorNotFound) {
+		writeJSON(w, http.StatusNotFound, map[string]any{
+			"error": "monitor not found",
+		})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "failed to set favorite",
 		})
 		return
 	}

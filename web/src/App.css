@@ -298,6 +298,24 @@ button {
   color: #172033;
 }
 
+.favorite-filter {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #778196;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.favorite-filter select {
+  min-width: 150px;
+  border: 1px solid #d9dfeb;
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: #ffffff;
+  color: #172033;
+}
+
 /* Accessible visually-hidden label text. */
 .sr-only {
   position: absolute;
@@ -581,6 +599,45 @@ button {
   letter-spacing: 0.03em;
 }
 
+/* Favorite toggle is a real, keyboard-focusable button. The unselected star is
+   muted so it stays subtle; the selected star uses the accent color to read as
+   a clear, persisted state without competing with the status indicator. */
+.favorite-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #a7b0c0;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.favorite-toggle:hover {
+  background: #f1f5fb;
+  color: #f59e0b;
+}
+
+.favorite-toggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.favorite-toggle.active {
+  color: #f59e0b;
+}
+
+.favorite-toggle:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+
 .monitor-main p {
   color: #7b8497;
   margin: 5px 0 0;
@@ -682,6 +739,14 @@ button {
 }
 
 .message.bulk-action-error {
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fef2f2;
+}
+
+.message.favorite-error {
   margin-bottom: 12px;
   padding: 14px;
   border: 1px solid #fecaca;
@@ -1057,6 +1122,15 @@ button {
   }
 
   .status-filter select {
+    flex: 1;
+    width: 100%;
+  }
+
+  .favorite-filter {
+    width: 100%;
+  }
+
+  .favorite-filter select {
     flex: 1;
     width: 100%;
   }
