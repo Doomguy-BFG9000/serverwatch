@@ -143,6 +143,8 @@ type BulkMonitorAction =
   | 'disable'
   | 'enter-maintenance'
   | 'exit-maintenance'
+  | 'favorite'
+  | 'unfavorite'
 
 // Bulk group destination is a transient, page-local choice. The empty string
 // is the non-action placeholder shown until the user picks a destination.
@@ -1063,6 +1065,10 @@ async function changeRange(range: TimeRange) {
             return updateMonitorMaintenance(monitor, true)
           case 'exit-maintenance':
             return updateMonitorMaintenance(monitor, false)
+          case 'favorite':
+            return updateMonitorFavorite(monitor, true)
+          case 'unfavorite':
+            return updateMonitorFavorite(monitor, false)
         }
       }),
     )
@@ -1823,6 +1829,22 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                     disabled={bulkActionLoading}
                   >
                     Exit Maintenance
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => runBulkAction('favorite')}
+                    disabled={bulkActionLoading}
+                  >
+                    Add to Favorites
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => runBulkAction('unfavorite')}
+                    disabled={bulkActionLoading}
+                  >
+                    Remove from Favorites
                   </button>
 
                   <label className="bulk-group-control">
