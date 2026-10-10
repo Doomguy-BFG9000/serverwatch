@@ -23,44 +23,65 @@ Download a prebuilt bundle from
 source with `make build && make web-build`. Full walkthrough:
 [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
-## Initial Goals
+## Features
 
-- Central dashboard for multiple servers
+Delivered in 0.1.0:
+
+- Central dashboard for multiple monitors
 - HTTP/HTTPS uptime monitoring
 - SSL certificate expiry monitoring
-- TCP port monitoring
+- TCP port and multi-port monitoring
 - Ping/ICMP host reachability monitoring
-- Cron heartbeat monitoring
-- Lightweight ServerWatch agent
-- CPU, RAM, disk, load, and uptime metrics
-- Email and Telegram alerts
-- Docker-based deployment
-- Simple self-hosted installation
+- DNS record monitoring
+- Monitor groups, favorites, maintenance mode, search, filtering, sorting, and
+  pagination
+- Dashboard health summary, per-monitor history, and ranged analytics
+- Email (SMTP) and Telegram alerts
+- Optional account authentication and shared API token
+- Security headers, rate limiting, audit log, and opt-in Prometheus metrics
+- Data retention, backup/restore, and Docker/systemd/Nginx deployment templates
+
+Planned:
+
+- Server agent and CPU/RAM/disk/load/uptime metrics
+- Cron heartbeat monitoring and more check types
+- Historical charts, teams and roles, and webhooks
+
+See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Architecture
 
 ServerWatch consists of:
 
-- Go backend/API
-- Go monitoring agent
-- React + TypeScript frontend
+- Go backend/API (`server/`)
+- React + TypeScript dashboard (`web/`)
 - PostgreSQL database
-- Docker Compose deployment
+- Optional Go agent (`agent/`) — a placeholder in 0.1.0; host metrics are planned
+- Docker Compose, systemd, and Nginx deployment templates
+
+The backend performs all network monitoring. The agent is not required to run
+ServerWatch. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Repository Structure
 
 - `server/` - central ServerWatch backend
-- `agent/` - lightweight monitored-server agent
+- `agent/` - optional monitored-server agent (placeholder in 0.1.0)
 - `web/` - React frontend
 - `database/` - migrations and database-related files
-- `deployments/` - deployment configuration
 - `docs/` - project documentation
-- `scripts/` - helper/install scripts
-- `tests/` - integration and system tests
+- `scripts/` - helper/install scripts (backup, restore, release)
+- `deployments/` - systemd, Nginx, and Docker deployment templates
 
-## License
+## Documentation
 
-Apache License 2.0
+- [Installation](docs/INSTALLATION.md) - install a release and serve the dashboard
+- [Configuration](docs/CONFIGURATION.md) - every environment variable and feature
+- [Architecture](docs/ARCHITECTURE.md) - how monitoring and checks work
+- [Backup and restore](docs/BACKUP_RESTORE.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Development](docs/DEVELOPMENT.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Changelog](CHANGELOG.md)
 
 ## Ping monitors
 
@@ -280,3 +301,7 @@ so `GET /health` and the dashboard header report the running build. Pushing a
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and
 review expectations, and [SECURITY.md](SECURITY.md) to report a vulnerability.
+
+## License
+
+Apache License 2.0
