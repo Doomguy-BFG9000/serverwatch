@@ -146,3 +146,25 @@ state. The dashboard shows a distinct `Maintenance` badge and provides
 `Enter Maintenance` / `Exit Maintenance` actions with a confirmation. See
 [Maintenance mode](docs/CONFIGURATION.md#maintenance-mode) and
 [Maintenance troubleshooting](docs/TROUBLESHOOTING.md#maintenance-mode).
+
+## API access token
+
+ServerWatch Community Edition can require a bearer token on its API surface.
+This is opt-in and off by default: when `SERVERWATCH_API_TOKEN` is unset, the
+API behaves exactly as before, so enabling the feature can never break an
+existing installation.
+
+Set `SERVERWATCH_API_TOKEN` (for example `openssl rand -hex 32`) in the
+environment file and restart the service. While it is set:
+
+- every `/api/v1/...` request must send `Authorization: Bearer <token>`;
+  requests without it receive `401 Unauthorized`;
+- the `/health` and `/ready` probes stay open so systemd, Docker, and Nginx
+  health checks keep working;
+- the dashboard prompts for the token and stores it in the browser only, then
+  sends it on every request.
+
+The token is a single shared secret for the whole installation. It is not a
+per-user account system. See
+[API access token](docs/CONFIGURATION.md#api-access-token) for configuration
+and operational details.

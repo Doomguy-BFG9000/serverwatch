@@ -4,10 +4,12 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
 	HTTPAddr   string
+	APIToken   string
 	AlertEmail AlertEmailConfig
 }
 
@@ -39,7 +41,11 @@ func Load() Config {
 	if alerts.Enabled && (alerts.Host == "" || alerts.Port <= 0 || alerts.From == "" || alerts.To == "") {
 		log.Printf("alert email is enabled but SMTP_HOST, SMTP_PORT, SMTP_FROM, and SMTP_TO must be configured")
 	}
-	return Config{HTTPAddr: addr, AlertEmail: alerts}
+	return Config{
+		HTTPAddr:   addr,
+		APIToken:   strings.TrimSpace(os.Getenv("SERVERWATCH_API_TOKEN")),
+		AlertEmail: alerts,
+	}
 }
 
 func envBool(key string, fallback bool) bool {

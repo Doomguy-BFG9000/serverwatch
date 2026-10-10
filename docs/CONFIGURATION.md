@@ -221,3 +221,41 @@ Maintenance is manual and per-monitor. There are no schedules, start/end times,
 recurrence, or reasons in this phase. On-demand diagnostic panels for
 SSL/DNS/Port monitors still run a fresh check when opened; that is a display
 action and does not create a scheduled result or an alert transition.
+
+## API access token
+
+The ServerWatch API is open by default. Setting `SERVERWATCH_API_TOKEN` to a
+non-empty value turns on shared-secret bearer authentication. The setting is
+read once at startup, so change it in the environment file and restart the
+service:
+
+```dotenv
+SERVERWATCH_API_TOKEN=<secret>
+```
+
+Generate a strong value and never commit it:
+
+```sh
+openssl rand -hex 32
+```
+
+While a token is configured:
+
+- requests to `/api/v1/...` must include `Authorization: Bearer <secret>`;
+  a missing or wrong token returns `401` with `{"error":"unauthorized"}` and a
+  `WWW-Authenticate: Bearer` header;
+- the comparison is constant-time and the scheme is case-insensitive
+  (`Bearer`/`bearer` both work), but the token itself is compared exactly;
+- `/health` and `/ready` are always open so liveness/readiness probes, systemd,
+  Docker health checks, and Nginx keep working;
+- when the variable is empty or unset, the middleware is a pass-through and the
+  API is open exactly as before.
+
+The dashboard prompts for the token when it receives a `401`, stores it in the
+browser's `localStorage` (key `serverwatch_api_token`), and sends it on every
+request. Use the top-bar **API Token** button to set or clear it. Clearing the
+token and reloading returns the browser to unauthenticated access.
+
+This is a single shared secret for the whole installation; it is not a multi-user
+account system, has no roles, and does not provide an audit trail of who made a
+change.

@@ -2,6 +2,55 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 
+// API access token (Phase 0.48). The backend only enforces a token when
+// SERVERWATCH_API_TOKEN is configured; when it is not, the header is ignored
+// and the dashboard behaves exactly as before. The token is stored in the
+// browser's localStorage (never in the repository) and attached to every
+// /api/ request through apiFetch().
+const apiTokenStorageKey = 'serverwatch_api_token'
+
+function readStoredApiToken(): string {
+  try {
+    return window.localStorage.getItem(apiTokenStorageKey) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function writeStoredApiToken(token: string) {
+  try {
+    if (token === '') {
+      window.localStorage.removeItem(apiTokenStorageKey)
+    } else {
+      window.localStorage.setItem(apiTokenStorageKey, token)
+    }
+  } catch {
+    // Storage can be unavailable (private mode); the in-memory token still
+    // applies for the current session.
+  }
+}
+
+function withAPIToken(headers?: HeadersInit): Headers {
+  const next = new Headers(headers)
+  const token = readStoredApiToken()
+
+  if (token !== '') {
+    next.set('Authorization', `Bearer ${token}`)
+  }
+
+  return next
+}
+
+// apiFetch is a thin fetch wrapper that attaches the optional API token. All
+// dashboard API access goes through it so authentication is applied uniformly.
+function apiFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  return fetch(input, { ...init, headers: withAPIToken(init?.headers) })
+}
+
+
 type MonitorStatus = {
   id: number
   name: string
@@ -367,6 +416,16 @@ function App() {
   const [error, setError] = useState('')
   const [alertStatus, setAlertStatus] = useState<AlertStatus | null>(null)
 
+  // API token state. `configuredToken` is what the user has stored; `authError`
+  // is set when the backend rejects a request (HTTP 401), which drives the
+  // "API token required/invalid" prompt. Both are frontend-only.
+  const [configuredToken, setConfiguredToken] = useState<string>(
+    readStoredApiToken,
+  )
+  const [showTokenPanel, setShowTokenPanel] = useState(false)
+  const [tokenDraft, setTokenDraft] = useState('')
+  const [authError, setAuthError] = useState(false)
+
   const [showGroupManager, setShowGroupManager] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [groupFormError, setGroupFormError] = useState('')
@@ -426,7 +485,7 @@ function App() {
     setChartPoints([])
 
     const [statsResult, chartResult] = await Promise.allSettled([
-      fetch(
+      apiFetch(
         `/api/v1/monitors/${monitorID}/stats?range=${range}`,
       ).then(async (response) => {
         if (!response.ok) {
@@ -435,7 +494,7 @@ function App() {
 
         return (await response.json()) as MonitorStats
       }),
-      fetch(
+      apiFetch(
         `/api/v1/monitors/${monitorID}/chart?range=${range}`,
       ).then(async (response) => {
         if (!response.ok) {
@@ -462,7 +521,7 @@ function App() {
     setResultsLoading(true)
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/v1/monitors/${monitorID}/results?range=30d&limit=50`,
       )
 
@@ -483,7 +542,7 @@ function App() {
     setSSLDetails(null)
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/v1/monitors/${monitorID}/ssl`,
       )
       if (!response.ok) {
@@ -500,7 +559,7 @@ function App() {
     setDNSLoading(true)
     setDNSDetails(null)
     try {
-      const response = await fetch(`/api/v1/monitors/${monitorID}/dns`)
+      const response = await apiFetch(`/api/v1/monitors/${monitorID}/dns`)
       if (!response.ok) throw new Error(`DNS HTTP ${response.status}`)
       setDNSDetails((await response.json()) as DNSDetails)
     } catch {
@@ -511,7 +570,7 @@ function App() {
     setPortLoading(true)
     setPortDetails(null)
     try {
-      const response = await fetch(`/api/v1/monitors/${monitorID}/ports`)
+      const response = await apiFetch(`/api/v1/monitors/${monitorID}/ports`)
       if (!response.ok) throw new Error(`Ports HTTP ${response.status}`)
       setPortDetails((await response.json()) as PortDetails)
     } catch {
@@ -520,7 +579,13 @@ function App() {
   }
   async function loadMonitors() {
     try {
-      const response = await fetch('/api/v1/monitors/status')
+      const response = await apiFetch('/api/v1/monitors/status')
+
+      if (response.status === 401) {
+        setAuthError(true)
+        setError('')
+        return
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
@@ -528,6 +593,7 @@ function App() {
 
       const data = await response.json()
 
+      setAuthError(false)
       setMonitors(data)
       setError('')
     } catch (err) {
@@ -541,9 +607,30 @@ function App() {
     }
   }
 
+  // Saving the token stores it and reloads immediately so the dashboard either
+  // authenticates or surfaces the invalid-token state right away.
+  function saveAPIToken(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    writeStoredApiToken(tokenDraft.trim())
+    setConfiguredToken(readStoredApiToken())
+    setTokenDraft('')
+    setShowTokenPanel(false)
+    setLoading(true)
+    loadMonitors()
+  }
+
+  function clearAPIToken() {
+    writeStoredApiToken('')
+    setConfiguredToken('')
+    setAuthError(false)
+    setShowTokenPanel(false)
+    setLoading(true)
+    loadMonitors()
+  }
+
   async function loadGroups() {
     try {
-      const response = await fetch('/api/v1/groups')
+      const response = await apiFetch('/api/v1/groups')
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
       }
@@ -555,7 +642,7 @@ function App() {
 
   async function loadAlertStatus() {
     try {
-      const response = await fetch('/api/v1/alerts/status')
+      const response = await apiFetch('/api/v1/alerts/status')
       if (!response.ok) return
       setAlertStatus((await response.json()) as AlertStatus)
     } catch {
@@ -940,7 +1027,7 @@ async function changeRange(range: TimeRange) {
     monitor: MonitorStatus,
     enabled: boolean,
   ) {
-    const response = await fetch(`/api/v1/monitors/${monitor.id}`, {
+    const response = await apiFetch(`/api/v1/monitors/${monitor.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -967,7 +1054,7 @@ async function changeRange(range: TimeRange) {
     monitor: MonitorStatus,
     maintenance: boolean,
   ) {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/v1/monitors/${monitor.id}/maintenance`,
       {
         method: 'PUT',
@@ -990,7 +1077,7 @@ async function changeRange(range: TimeRange) {
     monitor: MonitorStatus,
     favorite: boolean,
   ) {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/v1/monitors/${monitor.id}/favorite`,
       {
         method: 'PUT',
@@ -1014,7 +1101,7 @@ async function changeRange(range: TimeRange) {
     monitor: MonitorStatus,
     groupID: number | null,
   ) {
-    const response = await fetch(`/api/v1/monitors/${monitor.id}`, {
+    const response = await apiFetch(`/api/v1/monitors/${monitor.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -1221,7 +1308,7 @@ async function changeRange(range: TimeRange) {
     setDeletingMonitor(true)
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/v1/monitors/${monitor.id}`,
         {
           method: 'DELETE',
@@ -1265,7 +1352,7 @@ async function changeRange(range: TimeRange) {
     setGroupFormError('')
 
     try {
-      const response = await fetch('/api/v1/groups', {
+      const response = await apiFetch('/api/v1/groups', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1304,7 +1391,7 @@ async function changeRange(range: TimeRange) {
     setEditGroupError('')
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/v1/groups/${editingGroup.id}`,
         {
           method: 'PUT',
@@ -1343,7 +1430,7 @@ async function changeRange(range: TimeRange) {
     setDeleteGroupError('')
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/v1/groups/${deletingGroup.id}`,
         { method: 'DELETE' },
       )
@@ -1395,7 +1482,7 @@ async function changeRange(range: TimeRange) {
     }
 
     try {
-      const response = await fetch('/api/v1/monitors', {
+      const response = await apiFetch('/api/v1/monitors', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1454,7 +1541,7 @@ async function changeRange(range: TimeRange) {
     }
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/v1/monitors/${editingMonitor.id}`,
         {
           method: 'PUT',
@@ -1582,6 +1669,18 @@ function buildResponseChart(data: MonitorChartPoint[]) {
             + Add Monitor
           </button>
 
+          <button
+            type="button"
+            className="token-button"
+            aria-label="Configure API access token"
+            onClick={() => {
+              setTokenDraft('')
+              setShowTokenPanel(true)
+            }}
+          >
+            {configuredToken ? 'API Token ✓' : 'API Token'}
+          </button>
+
           <div className="live-indicator">
             <span />
             Live
@@ -1590,6 +1689,33 @@ function buildResponseChart(data: MonitorChartPoint[]) {
       </header>
 
       <main className="content">
+        {authError && (
+          <section
+            className="auth-banner"
+            role="alert"
+            aria-label="API token required"
+          >
+            <div>
+              <h2>API token required</h2>
+              <p>
+                This ServerWatch server requires an API access token. Enter the
+                token configured in <code>SERVERWATCH_API_TOKEN</code> to view
+                monitors.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => {
+                setTokenDraft('')
+                setShowTokenPanel(true)
+              }}
+            >
+              Enter API Token
+            </button>
+          </section>
+        )}
+
         <section
           className="summary-grid"
           aria-label="Monitor health summary"
@@ -2110,6 +2236,68 @@ function buildResponseChart(data: MonitorChartPoint[]) {
           )}
         </section>
       </main>
+
+      {showTokenPanel && (
+        <div className="modal-backdrop">
+          <div className="modal-card token-modal">
+            <div className="modal-header">
+              <div>
+                <h2>API Access Token</h2>
+                <p>
+                  Only needed when this ServerWatch server has
+                  SERVERWATCH_API_TOKEN configured.
+                </p>
+              </div>
+
+              <button
+                className="close-button"
+                type="button"
+                onClick={() => setShowTokenPanel(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <form className="monitor-form" onSubmit={saveAPIToken}>
+              <label>
+                Token
+                <input
+                  type="password"
+                  value={tokenDraft}
+                  onChange={(event) => setTokenDraft(event.target.value)}
+                  placeholder={
+                    configuredToken ? '•••••••• (stored)' : 'Paste API token'
+                  }
+                  autoComplete="off"
+                />
+              </label>
+
+              <p className="token-hint">
+                The token is stored in this browser only and is sent as an
+                Authorization: Bearer header. Leave empty and clear it to
+                return to unauthenticated access.
+              </p>
+
+              <div className="form-actions">
+                {configuredToken && (
+                  <button
+                    type="button"
+                    onClick={clearAPIToken}
+                  >
+                    Clear Token
+                  </button>
+                )}
+                <button
+                  className="primary-button"
+                  type="submit"
+                >
+                  Save Token
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showAddMonitor && (
         <div className="modal-backdrop">
