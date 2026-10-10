@@ -224,3 +224,23 @@ is ever blanked). Set it to `0` to keep history forever. See
 [Data retention](docs/CONFIGURATION.md#data-retention) and
 [Backup and restore](docs/BACKUP_RESTORE.md) (`scripts/backup.sh`,
 `scripts/restore.sh`).
+
+## Alert channels
+
+DOWN, recovery, and SSL-expiry alerts are delivered to every enabled channel.
+Email (SMTP) and Telegram can be used independently or together:
+
+```dotenv
+SERVERWATCH_ALERT_EMAIL_ENABLED=false
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+...
+
+SERVERWATCH_ALERT_TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+TELEGRAM_CHAT_ID=123456789
+```
+
+A failure on one channel does not prevent the others from delivering. See
+[Telegram alerts](docs/CONFIGURATION.md#telegram-alerts) and
+[SMTP email alerts](docs/CONFIGURATION.md#smtp-email-alerts).

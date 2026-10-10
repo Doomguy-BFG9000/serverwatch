@@ -6,13 +6,20 @@ import (
 	"github.com/serverwatch/serverwatch/server/internal/config"
 )
 
-type AlertHandler struct{ Config config.AlertEmailConfig }
+type AlertHandler struct {
+	Config         config.AlertEmailConfig
+	TelegramConfig config.AlertTelegramConfig
+}
 
 func (h *AlertHandler) Status(w http.ResponseWriter, r *http.Request) {
 	c := h.Config
+	t := h.TelegramConfig
 	writeJSON(w, http.StatusOK, map[string]any{
-		"email_enabled":        c.Enabled,
-		"smtp_configured":      c.Host != "" && c.Port > 0 && c.From != "",
-		"recipient_configured": c.To != "",
+		"email_enabled":            c.Enabled,
+		"smtp_configured":          c.Host != "" && c.Port > 0 && c.From != "",
+		"recipient_configured":     c.To != "",
+		"telegram_enabled":         t.Enabled,
+		"telegram_configured":      t.BotToken != "" && t.ChatID != "",
+		"telegram_chat_configured": t.ChatID != "",
 	})
 }

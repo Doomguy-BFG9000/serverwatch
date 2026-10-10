@@ -209,6 +209,9 @@ type AlertStatus = {
   email_enabled: boolean
   smtp_configured: boolean
   recipient_configured: boolean
+  telegram_enabled: boolean
+  telegram_configured: boolean
+  telegram_chat_configured: boolean
 }
 
 // Phase 0.49 authentication types. AuthEnabled is false unless the operator
@@ -1998,13 +2001,16 @@ function buildResponseChart(data: MonitorChartPoint[]) {
 
         <section className="alert-section">
           <div>
-            <h2>Email Alerts</h2>
-            <p>SMTP is configured on the ServerWatch server using environment variables.</p>
+            <h2>Alert Channels</h2>
+            <p>Email (SMTP) and Telegram are configured on the ServerWatch server using environment variables.</p>
           </div>
           <div className="alert-status-grid">
             <span>Email Alerts <strong>{alertStatus?.email_enabled ? 'Enabled' : 'Disabled'}</strong></span>
             <span>SMTP <strong>{alertStatus?.smtp_configured ? 'Configured' : 'Not Configured'}</strong></span>
             <span>Recipient <strong>{alertStatus?.recipient_configured ? 'Configured' : 'Not Configured'}</strong></span>
+            <span>Telegram Alerts <strong>{alertStatus?.telegram_enabled ? 'Enabled' : 'Disabled'}</strong></span>
+            <span>Telegram Bot <strong>{alertStatus?.telegram_configured ? 'Configured' : 'Not Configured'}</strong></span>
+            <span>Telegram Chat <strong>{alertStatus?.telegram_chat_configured ? 'Configured' : 'Not Configured'}</strong></span>
           </div>
         </section>
 

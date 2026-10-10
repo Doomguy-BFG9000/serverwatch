@@ -20,6 +20,14 @@ type Config struct {
 	TrustProxy     bool
 	RetentionDays  int
 	AlertEmail     AlertEmailConfig
+	AlertTelegram  AlertTelegramConfig
+}
+
+type AlertTelegramConfig struct {
+	Enabled  bool
+	BotToken string
+	ChatID   string
+	APIBase  string
 }
 
 type AlertEmailConfig struct {
@@ -50,6 +58,19 @@ func Load() Config {
 	if alerts.Enabled && (alerts.Host == "" || alerts.Port <= 0 || alerts.From == "" || alerts.To == "") {
 		log.Printf("alert email is enabled but SMTP_HOST, SMTP_PORT, SMTP_FROM, and SMTP_TO must be configured")
 	}
+
+	telegram := AlertTelegramConfig{
+		Enabled:  envBool("SERVERWATCH_ALERT_TELEGRAM_ENABLED", false),
+		BotToken: strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
+		ChatID:   strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID")),
+		APIBase:  strings.TrimRight(strings.TrimSpace(os.Getenv("TELEGRAM_API_BASE")), "/"),
+	}
+	if telegram.APIBase == "" {
+		telegram.APIBase = "https://api.telegram.org"
+	}
+	if telegram.Enabled && (telegram.BotToken == "" || telegram.ChatID == "") {
+		log.Printf("alert telegram is enabled but TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be configured")
+	}
 	return Config{
 		HTTPAddr:       addr,
 		APIToken:       strings.TrimSpace(os.Getenv("SERVERWATCH_API_TOKEN")),
@@ -62,6 +83,7 @@ func Load() Config {
 		TrustProxy:     envBool("SERVERWATCH_TRUST_PROXY", true),
 		RetentionDays:  envInt("SERVERWATCH_RESULT_RETENTION_DAYS", 30),
 		AlertEmail:     alerts,
+		AlertTelegram:  telegram,
 	}
 }
 

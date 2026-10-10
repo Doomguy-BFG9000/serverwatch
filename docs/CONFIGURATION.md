@@ -17,6 +17,32 @@ SMTP_TLS=true
 
 Never commit `SMTP_PASSWORD`. Apply database migration
 `database/migrations/002_alerting.sql` before starting the backend.
+
+## Telegram alerts
+
+Telegram alerts are a second, independent channel (Phase 0.52) and are disabled
+unless explicitly enabled. Create a bot with
+[@BotFather](https://core.telegram.org/bots#botfather), send it a message, then
+find your chat id (for a private chat, message the bot and read
+`https://api.telegram.org/bot<token>/getUpdates`, or add the bot to a group).
+
+```dotenv
+SERVERWATCH_ALERT_TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+TELEGRAM_CHAT_ID=123456789
+# Optional: only for a self-hosted Bot API server. Leave empty for the public API.
+TELEGRAM_API_BASE=
+```
+
+Never commit `TELEGRAM_BOT_TOKEN`. Email and Telegram can be enabled together;
+each alert (DOWN, recovery, or SSL expiry) is delivered to every enabled channel,
+and a failure on one channel does not block the others. The recipient is always
+`TELEGRAM_CHAT_ID`; unlike SMTP there is no per-alert destination.
+
+Verify configuration on the dashboard's **Alert Channels** panel or via
+`GET /api/v1/alerts/status`, which reports `telegram_enabled`,
+`telegram_configured`, and `telegram_chat_configured`.
+
 ## DNS monitoring
 
 ServerWatch Community Edition supports DNS monitors for `A`, `AAAA`, `CNAME`, `MX`, `NS`, and `TXT` records. The target is a DNS name only, such as `example.com`: do not include a protocol, port, or path. A trailing FQDN dot is accepted and normalized.

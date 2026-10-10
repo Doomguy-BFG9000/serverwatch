@@ -42,10 +42,18 @@ func main() {
 	monitorScheduler := monitorengine.NewScheduler(
 		monitorRepository,
 	)
+	alertSenders := make([]alert.Sender, 0, 2)
+	if cfg.AlertEmail.Enabled {
+		alertSenders = append(alertSenders, alert.SMTPSender{Config: cfg.AlertEmail})
+	}
+	if cfg.AlertTelegram.Enabled {
+		alertSenders = append(alertSenders, alert.TelegramSender{Config: cfg.AlertTelegram})
+	}
+
 	monitorScheduler.AlertService = &alert.Service{
 		Store:   monitorRepository,
-		Sender:  alert.SMTPSender{Config: cfg.AlertEmail},
-		Enabled: cfg.AlertEmail.Enabled,
+		Sender:  alert.MultiSender{Senders: alertSenders},
+		Enabled: len(alertSenders) > 0,
 	}
 
 	schedulerCtx, schedulerCancel := context.WithCancel(
@@ -67,7 +75,10 @@ func main() {
 	groupHandler := &httpapi.GroupHandler{
 		Repository: groupRepository,
 	}
-	alertHandler := &httpapi.AlertHandler{Config: cfg.AlertEmail}
+	alertHandler := &httpapi.AlertHandler{
+		Config:         cfg.AlertEmail,
+		TelegramConfig: cfg.AlertTelegram,
+	}
 	authHandler := &httpapi.AuthHandler{
 		Store:        authRepository,
 		AuthEnabled:  cfg.AuthEnabled,
