@@ -1907,6 +1907,11 @@ function buildResponseChart(data: MonitorChartPoint[]) {
         <div>
           <h1>ServerWatch</h1>
           <p>Community Edition</p>
+          {__APP_VERSION__ !== 'dev' && (
+            <p className="build-version" title="Backend and dashboard build">
+              {__APP_VERSION__}
+            </p>
+          )}
         </div>
 
         <div className="topbar-actions">

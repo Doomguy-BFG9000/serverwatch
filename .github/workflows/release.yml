@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build release bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: server/go.sum
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dashboard dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      # The tag (without the leading "v") is the version baked into the binary
+      # and dashboard, so GET /health matches the release name.
+      - name: Build release bundle
+        run: ./scripts/release.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/serverwatch-*.tar.gz
+            dist/SHA256SUMS

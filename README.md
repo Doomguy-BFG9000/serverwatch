@@ -4,7 +4,24 @@ ServerWatch is a lightweight self-hosted monitoring platform for servers, websit
 
 ## Project Status
 
-Early development / Community Edition.
+Community Edition **0.1.0** — first release. The backend, dashboard, alerting, and
+operations tooling are ready to self-host; see [CHANGELOG.md](CHANGELOG.md) for
+what is included and [docs/ROADMAP.md](docs/ROADMAP.md) for what is planned.
+
+## Quick start
+
+```bash
+tar xzf serverwatch-0.1.0-linux-amd64.tar.gz
+cd serverwatch-0.1.0-linux-amd64
+cp .env.example serverwatch.env    # edit DATABASE_URL and secrets
+docker compose --env-file serverwatch.env up -d postgres
+./bin/serverwatch
+```
+
+Download a prebuilt bundle from
+[Releases](https://github.com/serverwatch/serverwatch/releases), or build from
+source with `make build && make web-build`. Full walkthrough:
+[docs/INSTALLATION.md](docs/INSTALLATION.md).
 
 ## Initial Goals
 
@@ -244,3 +261,22 @@ TELEGRAM_CHAT_ID=123456789
 A failure on one channel does not prevent the others from delivering. See
 [Telegram alerts](docs/CONFIGURATION.md#telegram-alerts) and
 [SMTP email alerts](docs/CONFIGURATION.md#smtp-email-alerts).
+
+## Building and releasing
+
+```bash
+make build        # versioned backend binary -> bin/serverwatch
+make test         # Go (server + agent) and TypeScript checks
+make check        # full merge gate
+make release VERSION=v0.1.0   # dist/serverwatch-v0.1.0-linux-amd64.tar.gz + SHA256SUMS
+```
+
+The version in `VERSION` is injected into the backend binary and the dashboard,
+so `GET /health` and the dashboard header report the running build. Pushing a
+`v*` tag publishes a release bundle via GitHub Actions. See
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and
+review expectations, and [SECURITY.md](SECURITY.md) to report a vulnerability.

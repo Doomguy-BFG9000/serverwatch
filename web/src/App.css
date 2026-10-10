@@ -66,6 +66,13 @@ button {
   font-size: 13px;
 }
 
+.topbar .build-version {
+  margin-top: 2px;
+  color: #a3adc2;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 .topbar-actions {
   display: flex;
   align-items: center;

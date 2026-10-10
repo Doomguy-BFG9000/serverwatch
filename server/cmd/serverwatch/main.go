@@ -16,11 +16,13 @@ import (
 	monitorengine "github.com/serverwatch/serverwatch/server/internal/monitor"
 	"github.com/serverwatch/serverwatch/server/internal/repository"
 	"github.com/serverwatch/serverwatch/server/internal/storage"
+	"github.com/serverwatch/serverwatch/server/internal/version"
 )
 
 func main() {
 	ctx := context.Background()
 	cfg := config.Load()
+	log.Printf("ServerWatch Community Edition %s starting", version.String())
 	db, err := storage.NewPostgresPool(ctx)
 	if err != nil {
 		log.Fatalf("database connection failed: %v", err)

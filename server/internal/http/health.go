@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/serverwatch/serverwatch/server/internal/version"
 )
 
 type HealthHandler struct {
@@ -24,6 +25,8 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "ok",
 		"service": "serverwatch",
+		"version": version.Version,
+		"commit":  version.Commit,
 	})
 }
 

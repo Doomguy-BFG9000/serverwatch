@@ -1,0 +1,12 @@
+# Normalize line endings: LF everywhere except Windows-only scripts.
+* text=auto eol=lf
+
+*.sh text eol=lf
+Makefile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
