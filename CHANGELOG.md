@@ -9,15 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] - 2026-10-10
 
-First Community Edition release: a lightweight, self-hosted monitoring platform
-for servers, websites, APIs, SSL certificates, cron jobs, and infrastructure
-health.
+First Community Edition release: a lightweight, self-hosted uptime monitoring
+platform for websites, APIs, hosts, certificates, and DNS.
 
 ### Added
 
 - **Monitoring** - HTTP/HTTPS, TCP port, ping/ICMP, DNS, SSL certificate expiry,
-  multi-port, and cron heartbeat checks, each with configurable interval and
-  timeout.
+  and multi-port checks, each with configurable interval and timeout.
 - **Monitor management** - groups, maintenance mode, favorites, search, status
   filtering, sorting, and pagination, plus bulk actions (group assignment,
   enable/disable, favorite).

@@ -20,6 +20,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=scripts/lib.sh
+source "${SCRIPT_DIR}/lib.sh"
 
 if [[ $# -lt 1 ]]; then
   echo "usage: scripts/restore.sh <backup-file> [--yes]" >&2
@@ -39,25 +41,12 @@ fi
 
 CONTAINER="${SERVERWATCH_POSTGRES_CONTAINER:-serverwatch-postgres}"
 
-env_file="${SERVERWATCH_ENV_FILE:-}"
-if [[ -z "${env_file}" ]]; then
-  for candidate in /opt/serverwatch/serverwatch.env "${REPO_DIR}/serverwatch.env" "${REPO_DIR}/.env"; do
-    if [[ -f "${candidate}" ]]; then
-      env_file="${candidate}"
-      break
-    fi
-  done
-fi
-
-if [[ -z "${env_file}" || ! -f "${env_file}" ]]; then
+if ! env_file="$(find_env_file "${REPO_DIR}")"; then
   echo "error: no environment file found; set SERVERWATCH_ENV_FILE" >&2
   exit 1
 fi
 
-# shellcheck disable=SC1090
-set -a
-source "${env_file}"
-set +a
+read -r POSTGRES_DB POSTGRES_USER <<<"$(resolve_postgres_identity "${env_file}")"
 
 : "${POSTGRES_DB:?POSTGRES_DB must be set in ${env_file}}"
 : "${POSTGRES_USER:?POSTGRES_USER must be set in ${env_file}}"

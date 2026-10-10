@@ -822,7 +822,7 @@ function App() {
     }, 10000)
 
     return () => window.clearInterval(timer)
-  }, [authStatus?.auth_enabled, authStatus?.authenticated])
+  }, [authStatus])
 
   // Dashboard health summary is a global overview of every configured
   // monitor. It deliberately reads the unfiltered `monitors` collection so

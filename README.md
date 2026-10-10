@@ -1,6 +1,6 @@
 # ServerWatch Community Edition
 
-ServerWatch is a lightweight self-hosted monitoring platform for servers, websites, APIs, SSL certificates, cron jobs, and infrastructure health.
+ServerWatch is a lightweight, self-hosted uptime monitoring platform for websites, APIs, hosts, DNS, and SSL certificates.
 
 ## Project Status
 

@@ -49,7 +49,7 @@ echo "==> Packaging support files"
 cp -R deployments/* "${STAGE}/deployments/"
 cp -R database/migrations "${STAGE}/database/"
 cp -R docs/* "${STAGE}/docs/"
-cp scripts/backup.sh scripts/restore.sh "${STAGE}/scripts/"
+cp scripts/backup.sh scripts/restore.sh scripts/lib.sh "${STAGE}/scripts/"
 cp .env.example README.md CHANGELOG.md LICENSE VERSION "${STAGE}/"
 
 # Runs on any host with Docker; the operator edits serverwatch.env first.

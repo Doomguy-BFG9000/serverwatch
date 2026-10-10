@@ -22,10 +22,17 @@ dashboard can be reinstalled from the repository.
 scripts/backup.sh [BACKUP_DIR]
 ```
 
-The script reads `POSTGRES_DB`/`POSTGRES_USER` from the environment file,
-`pg_dump`s the `serverwatch-postgres` container in custom format, gzips it to
+The script reads the target database from the environment file: it uses
+`POSTGRES_DB`/`POSTGRES_USER` when present and otherwise derives them from
+`DATABASE_URL`, so it works whether your env file sets the `POSTGRES_*`
+variables (as `.env.example` does) or only `DATABASE_URL`. It `pg_dump`s the
+`serverwatch-postgres` container in custom format, gzips it to
 `serverwatch-<UTC-timestamp>.dump.gz` (default directory
 `/var/backups/serverwatch`), and prunes everything but the most recent 7 files.
+
+The environment file is parsed literally (key to end of line, matching
+systemd's `EnvironmentFile`); it is never sourced, so values containing spaces
+or shell metacharacters are handled safely.
 
 Relevant environment overrides:
 
