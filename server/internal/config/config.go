@@ -9,12 +9,16 @@ import (
 )
 
 type Config struct {
-	HTTPAddr     string
-	APIToken     string
-	AuthEnabled  bool
-	SessionTTL   time.Duration
-	CookieSecure bool
-	AlertEmail   AlertEmailConfig
+	HTTPAddr       string
+	APIToken       string
+	AuthEnabled    bool
+	SessionTTL     time.Duration
+	CookieSecure   bool
+	MetricsEnabled bool
+	RateLimitRPS   float64
+	RateLimitBurst int
+	TrustProxy     bool
+	AlertEmail     AlertEmailConfig
 }
 
 type AlertEmailConfig struct {
@@ -46,12 +50,16 @@ func Load() Config {
 		log.Printf("alert email is enabled but SMTP_HOST, SMTP_PORT, SMTP_FROM, and SMTP_TO must be configured")
 	}
 	return Config{
-		HTTPAddr:     addr,
-		APIToken:     strings.TrimSpace(os.Getenv("SERVERWATCH_API_TOKEN")),
-		AuthEnabled:  envBool("SERVERWATCH_AUTH_ENABLED", false),
-		SessionTTL:   envDuration("SERVERWATCH_SESSION_TTL", 30*24*time.Hour),
-		CookieSecure: envBool("SERVERWATCH_COOKIE_SECURE", false),
-		AlertEmail:   alerts,
+		HTTPAddr:       addr,
+		APIToken:       strings.TrimSpace(os.Getenv("SERVERWATCH_API_TOKEN")),
+		AuthEnabled:    envBool("SERVERWATCH_AUTH_ENABLED", false),
+		SessionTTL:     envDuration("SERVERWATCH_SESSION_TTL", 30*24*time.Hour),
+		CookieSecure:   envBool("SERVERWATCH_COOKIE_SECURE", false),
+		MetricsEnabled: envBool("SERVERWATCH_METRICS_ENABLED", false),
+		RateLimitRPS:   envFloat("SERVERWATCH_RATE_LIMIT_RPS", 10),
+		RateLimitBurst: envInt("SERVERWATCH_RATE_LIMIT_BURST", 30),
+		TrustProxy:     envBool("SERVERWATCH_TRUST_PROXY", true),
+		AlertEmail:     alerts,
 	}
 }
 
@@ -75,6 +83,16 @@ func envBool(key string, fallback bool) bool {
 
 func envInt(key string, fallback int) int {
 	value, err := strconv.Atoi(os.Getenv(key))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+// envFloat parses a positive floating-point value used for rates. An empty,
+// invalid, or non-positive value returns the fallback.
+func envFloat(key string, fallback float64) float64 {
+	value, err := strconv.ParseFloat(os.Getenv(key), 64)
 	if err != nil || value <= 0 {
 		return fallback
 	}

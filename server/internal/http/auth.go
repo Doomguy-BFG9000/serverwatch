@@ -49,14 +49,15 @@ func NewAuthMiddleware(enabled bool, apiToken string, store AuthStore, next http
 		}
 
 		if apiToken != "" && validBearerToken(r.Header.Get("Authorization"), apiToken) {
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), principal{ViaToken: true})))
 			return
 		}
 
 		if enabled && store != nil {
 			if cookie, err := r.Cookie(sessionCookieName); err == nil && cookie.Value != "" {
-				if _, err := store.FindUserBySession(r.Context(), service.HashSessionToken(cookie.Value)); err == nil {
-					next.ServeHTTP(w, r)
+				if user, err := store.FindUserBySession(r.Context(), service.HashSessionToken(cookie.Value)); err == nil {
+					ctx := withPrincipal(r.Context(), principal{User: &user})
+					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
 			}

@@ -300,3 +300,77 @@ without a valid session or token.
 This is a single-administrator model. There are no per-user roles, no
 multi-tenant permissions, and no audit log of individual changes; adding those
 is future work.
+
+## Security hardening
+
+Phase 0.50 adds a set of always-on and opt-in protections. All defaults are
+safe for a fresh install; the opt-in features are off until enabled.
+
+### Security response headers
+
+Every response carries `X-Content-Type-Options: nosniff`,
+`X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
+`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy:
+same-origin`, a restrictive `Permissions-Policy`, and a strict
+`Content-Security-Policy`. `Strict-Transport-Security` is added only when the
+request arrives over TLS (directly or via `X-Forwarded-Proto: https`), so a
+plain-HTTP LAN install is never locked out. Nginx also sets matching headers for
+static assets; keep the two in sync (see
+`deployments/nginx/serverwatch.conf`).
+
+The CSP is intentionally strict (`'self'` only). The bundled dashboard has no
+inline scripts or styles and loads nothing from third-party origins.
+
+### API rate limiting
+
+The API is protected by an in-memory token-bucket limiter keyed by client IP.
+It applies only to `/api/`; static dashboard assets are unaffected. Configure
+with:
+
+```dotenv
+SERVERWATCH_RATE_LIMIT_RPS=10
+SERVERWATCH_RATE_LIMIT_BURST=30
+SERVERWATCH_TRUST_PROXY=true
+```
+
+Set `SERVERWATCH_RATE_LIMIT_RPS=0` to disable. `SERVERWATCH_TRUST_PROXY=true`
+(the default) reads the client IP from `X-Forwarded-For`/`X-Real-IP`, which is
+correct behind the documented Nginx setup; set it to `false` if the backend is
+exposed directly. Over-limit requests receive `429 Too Many Requests`. The
+limiter is per process and resets on restart; it is edge protection, not a
+distributed quota. Nginx additionally applies `limit_req` at the edge.
+
+### Audit log
+
+Every mutating API call (`POST`, `PUT`, `PATCH`, `DELETE` under `/api/`) is
+logged to standard output with the method, path, response status, actor
+(`user` with the user id, `token` for the shared API token, or `anonymous`),
+duration, and client address. Reads are not logged. These lines are captured by
+systemd/journald, so they are visible with:
+
+```sh
+journalctl -u serverwatch | grep audit
+```
+
+The audit log is a lightweight append-only trail, not a tamper-evident or
+queryable audit store. Ship the logs to a central system if you need retention
+or immutability.
+
+### Prometheus metrics
+
+Set `SERVERWATCH_METRICS_ENABLED=true` to expose `GET /metrics` in the
+Prometheus text format. The endpoint is mounted outside the `/api/` auth gate
+so a host-local scraper does not need a session or token; keep it off the public
+internet (the Nginx template shows a restricted `location`). Metrics include
+`serverwatch_http_requests_total{method,status_class}` counters.
+
+### Reverse proxy and TLS
+
+`deployments/nginx/serverwatch.conf` is a ready-to-use Nginx site: it serves the
+built dashboard, proxies the API, applies edge rate limiting and security
+headers, and documents enabling TLS with Certbot. Set
+`SERVERWATCH_COOKIE_SECURE=true` only after HTTPS is working.
+
+`deployments/systemd/serverwatch.service` is the matching systemd unit with
+`NoNewPrivileges`, `PrivateTmp`, and additional `Protect*`/`Restrict*`
+sandboxing.

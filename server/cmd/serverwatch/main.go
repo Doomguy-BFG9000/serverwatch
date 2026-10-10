@@ -71,6 +71,9 @@ func main() {
 		SessionTTL:   cfg.SessionTTL,
 		CookieSecure: cfg.CookieSecure,
 	}
+	metrics := httpapi.NewMetrics()
+	rateLimiter := httpapi.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst, cfg.TrustProxy)
+	auditLog := &httpapi.AuditLog{Logger: log.New(os.Stdout, "", log.LstdFlags|log.LUTC)}
 
 	mux := http.NewServeMux()
 
@@ -112,9 +115,30 @@ func main() {
 		"GET /api/v1/monitors/{id}/chart",
 		monitorHandler.Chart,
 	)
+
+	// /metrics is opt-in and mounted outside /api/ so a host-local Prometheus
+	// scraper can read it without a session or token.
+	if cfg.MetricsEnabled {
+		mux.HandleFunc("GET /metrics", metrics.Handler)
+	}
+
+	// Middleware order (outermost first): security headers on every response,
+	// then request metrics, then rate limiting, then authentication, then the
+	// mutating-call audit trail. Authentication resolves the caller's identity
+	// into the request context for the audit log.
+	handler := httpapi.SecurityHeaders(
+		metrics.Middleware(
+			rateLimiter.Middleware(
+				httpapi.NewAuthMiddleware(cfg.AuthEnabled, cfg.APIToken, authRepository,
+					auditLog.Middleware(mux),
+				),
+			),
+		),
+	)
+
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewAuthMiddleware(cfg.AuthEnabled, cfg.APIToken, authRepository, mux),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,

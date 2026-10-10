@@ -190,3 +190,21 @@ Passwords are stored as PBKDF2-HMAC-SHA256 hashes with a random per-password
 salt. This release provides a single administrator account, not per-user roles
 or multi-tenant permissions. See
 [Account authentication](docs/CONFIGURATION.md#account-authentication).
+
+## Security hardening
+
+Phase 0.50 adds hardening that is on by default plus opt-in features:
+
+- Strict security headers (CSP, `X-Frame-Options: DENY`, `nosniff`, referrer and
+  cross-origin policies) on every response; `Strict-Transport-Security` only
+  over TLS.
+- Per-client API rate limiting (`429` over limit) with edge `limit_req` in the
+  Nginx template.
+- An audit log of every mutating API call, attributed to the user, the shared
+  token, or anonymous.
+- An optional Prometheus `/metrics` endpoint
+  (`SERVERWATCH_METRICS_ENABLED=true`).
+- Ready-to-use `deployments/nginx/` and `deployments/systemd/` templates with
+  TLS guidance and service sandboxing.
+
+See [Security hardening](docs/CONFIGURATION.md#security-hardening) for details.

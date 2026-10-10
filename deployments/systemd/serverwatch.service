@@ -1,0 +1,57 @@
+# ServerWatch Community Edition systemd unit.
+#
+# This mirrors the unit used by the reference install. It runs the backend as
+# the unprivileged `serverwatch` user and ensures the Postgres container is up
+# first. Adjust paths if you installed somewhere other than /opt/serverwatch.
+#
+# Install:
+#   sudo cp deployments/systemd/serverwatch.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now serverwatch
+
+[Unit]
+Description=ServerWatch Community Edition
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=serverwatch
+Group=serverwatch
+
+WorkingDirectory=/opt/serverwatch
+
+# All configuration and secrets live in this file (see .env.example). Keep it
+# readable only by the service user: `chmod 600 /opt/serverwatch/serverwatch.env`.
+EnvironmentFile=/opt/serverwatch/serverwatch.env
+
+# PID 1 for the service is the backend; Postgres is a separate container that
+# is started here and managed by its own restart policy.
+ExecStartPre=/usr/bin/docker compose -f /opt/serverwatch/docker-compose.yml up -d postgres
+ExecStart=/opt/serverwatch/bin/serverwatch
+
+Restart=on-failure
+RestartSec=5
+
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# --- Hardening ---
+# Sandbox the service further. NoNewPrivileges and PrivateTmp match the
+# reference install; the additional Protect*/Restrict* directives are
+# compatible with an ExecStartPre that shells out to `docker compose`.
+# Verify with `systemctl restart serverwatch && systemctl status serverwatch`.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
