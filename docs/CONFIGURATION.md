@@ -39,9 +39,14 @@ each alert (DOWN, recovery, or SSL expiry) is delivered to every enabled channel
 and a failure on one channel does not block the others. The recipient is always
 `TELEGRAM_CHAT_ID`; unlike SMTP there is no per-alert destination.
 
-Verify configuration on the dashboard's **Alert Channels** panel or via
-`GET /api/v1/alerts/status`, which reports `telegram_enabled`,
-`telegram_configured`, and `telegram_chat_configured`.
+Verify configuration on the dashboard's **Alert Channels** panel (the *View
+Details* button opens a read-only breakdown of each channel) or via
+`GET /api/v1/alerts/status`. That endpoint reports `email_enabled`,
+`smtp_configured`, `recipient_configured`, `telegram_enabled`,
+`telegram_configured`, and `telegram_chat_configured`, plus non-secret delivery
+details (SMTP host/port/TLS, From, the recipient list, and the Telegram chat id)
+so the panel can show exactly where alerts are going. The SMTP password and the
+Telegram bot token are never returned.
 
 ## DNS monitoring
 

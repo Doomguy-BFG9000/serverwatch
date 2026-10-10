@@ -23,7 +23,8 @@ platform for websites, APIs, hosts, certificates, and DNS.
   aggregated chart data, and status shortcuts.
 - **Alerting** - plain-text email alerts (SMTP) and Telegram alerts, delivered on
   DOWN, recovery, and SSL-expiry transitions. Channels are independent: a
-  failure on one does not block the other.
+  failure on one does not block the other. A read-only Alerts panel in the
+  dashboard shows each channel's status and non-secret delivery details.
 - **Authentication** - optional single-admin account authentication with session
   cookies and an optional shared API access token for automation. Health and
   readiness probes stay open.

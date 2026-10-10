@@ -216,6 +216,92 @@ button {
 .alert-status-grid { display: flex; gap: 24px; flex-wrap: wrap; color: #778196; font-size: 13px; }
 .alert-status-grid strong { display: block; color: #172033; margin-top: 5px; }
 
+.alert-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+/* Alerts panel (read-only alert channel details) */
+
+.alerts-modal {
+  width: min(620px, 100%);
+}
+
+.alerts-channels {
+  display: grid;
+  gap: 16px;
+}
+
+.alerts-channel {
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.alerts-channel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.alerts-channel h3 { margin: 0; font-size: 16px; color: #172033; }
+
+.alerts-badge {
+  border: 1px solid #d9dfeb;
+  border-radius: 999px;
+  padding: 3px 10px;
+
+  background: #f4f6fb;
+  color: #778196;
+
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.alerts-badge-on {
+  border-color: #b7e4c7;
+  background: #e9f9ef;
+  color: #1a7f3c;
+}
+
+.alerts-details {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.alerts-details > div {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.alerts-details dt {
+  margin: 0;
+  color: #778196;
+  font-size: 13px;
+}
+
+.alerts-details dd {
+  margin: 0;
+  color: #172033;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.alerts-recipients {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+
 /* Monitor Section */
 
 .monitor-section {

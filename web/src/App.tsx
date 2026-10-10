@@ -212,6 +212,13 @@ type AlertStatus = {
   telegram_enabled: boolean
   telegram_configured: boolean
   telegram_chat_configured: boolean
+  smtp_host?: string
+  smtp_port?: number
+  smtp_tls?: boolean
+  email_from?: string
+  email_recipients?: string[]
+  telegram_chat_id?: string
+  telegram_api_base?: string
 }
 
 // Phase 0.49 authentication types. AuthEnabled is false unless the operator
@@ -444,6 +451,7 @@ function App() {
     readStoredApiToken,
   )
   const [showTokenPanel, setShowTokenPanel] = useState(false)
+  const [showAlertsPanel, setShowAlertsPanel] = useState(false)
   const [tokenDraft, setTokenDraft] = useState('')
   const [authError, setAuthError] = useState(false)
 
@@ -2009,13 +2017,22 @@ function buildResponseChart(data: MonitorChartPoint[]) {
             <h2>Alert Channels</h2>
             <p>Email (SMTP) and Telegram are configured on the ServerWatch server using environment variables.</p>
           </div>
-          <div className="alert-status-grid">
-            <span>Email Alerts <strong>{alertStatus?.email_enabled ? 'Enabled' : 'Disabled'}</strong></span>
-            <span>SMTP <strong>{alertStatus?.smtp_configured ? 'Configured' : 'Not Configured'}</strong></span>
-            <span>Recipient <strong>{alertStatus?.recipient_configured ? 'Configured' : 'Not Configured'}</strong></span>
-            <span>Telegram Alerts <strong>{alertStatus?.telegram_enabled ? 'Enabled' : 'Disabled'}</strong></span>
-            <span>Telegram Bot <strong>{alertStatus?.telegram_configured ? 'Configured' : 'Not Configured'}</strong></span>
-            <span>Telegram Chat <strong>{alertStatus?.telegram_chat_configured ? 'Configured' : 'Not Configured'}</strong></span>
+          <div className="alert-section-actions">
+            <div className="alert-status-grid">
+              <span>Email Alerts <strong>{alertStatus?.email_enabled ? 'Enabled' : 'Disabled'}</strong></span>
+              <span>Telegram Alerts <strong>{alertStatus?.telegram_enabled ? 'Enabled' : 'Disabled'}</strong></span>
+            </div>
+            <button
+              type="button"
+              className="token-button"
+              aria-label="View alert channel details"
+              onClick={() => {
+                loadAlertStatus()
+                setShowAlertsPanel(true)
+              }}
+            >
+              View Details
+            </button>
           </div>
         </section>
 
@@ -2567,6 +2584,135 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showAlertsPanel && (
+        <div className="modal-backdrop">
+          <div className="modal-card alerts-modal">
+            <div className="modal-header">
+              <div>
+                <h2>Alert Channels</h2>
+                <p>
+                  Read-only view of how this ServerWatch server delivers
+                  alerts. Configure Email and Telegram with environment
+                  variables (see docs/CONFIGURATION.md).
+                </p>
+              </div>
+
+              <button
+                className="close-button"
+                type="button"
+                onClick={() => setShowAlertsPanel(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            {!alertStatus ? (
+              <p className="token-hint">
+                Alert configuration is unavailable right now. Check the server
+                connection and try again.
+              </p>
+            ) : (
+              <div className="alerts-channels">
+                <section className="alerts-channel">
+                  <header>
+                    <h3>Email (SMTP)</h3>
+                    <span
+                      className={
+                        alertStatus.email_enabled
+                          ? 'alerts-badge alerts-badge-on'
+                          : 'alerts-badge'
+                      }
+                    >
+                      {alertStatus.email_enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </header>
+                  {!alertStatus.email_enabled && (
+                    <p className="token-hint">
+                      Set SERVERWATCH_ALERT_EMAIL_ENABLED=true to deliver alerts
+                      by email.
+                    </p>
+                  )}
+                  <dl className="alerts-details">
+                    <div>
+                      <dt>SMTP server</dt>
+                      <dd>
+                        {alertStatus.smtp_configured
+                          ? `${alertStatus.smtp_host}:${alertStatus.smtp_port}`
+                          : 'Not configured'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Transport</dt>
+                      <dd>
+                        {alertStatus.smtp_tls ? 'STARTTLS' : 'Plain'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>From</dt>
+                      <dd>{alertStatus.email_from || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Recipients</dt>
+                      <dd>
+                        {alertStatus.email_recipients &&
+                        alertStatus.email_recipients.length > 0 ? (
+                          <ul className="alerts-recipients">
+                            {alertStatus.email_recipients.map((recipient) => (
+                              <li key={recipient}>{recipient}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          'Not configured'
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+
+                <section className="alerts-channel">
+                  <header>
+                    <h3>Telegram</h3>
+                    <span
+                      className={
+                        alertStatus.telegram_enabled
+                          ? 'alerts-badge alerts-badge-on'
+                          : 'alerts-badge'
+                      }
+                    >
+                      {alertStatus.telegram_enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </header>
+                  {!alertStatus.telegram_enabled && (
+                    <p className="token-hint">
+                      Set SERVERWATCH_ALERT_TELEGRAM_ENABLED=true to deliver
+                      alerts through Telegram.
+                    </p>
+                  )}
+                  <dl className="alerts-details">
+                    <div>
+                      <dt>Bot token</dt>
+                      <dd>
+                        {alertStatus.telegram_configured
+                          ? 'Configured'
+                          : 'Not configured'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Chat ID</dt>
+                      <dd>{alertStatus.telegram_chat_id || 'Not configured'}</dd>
+                    </div>
+                    <div>
+                      <dt>API base</dt>
+                      <dd>{alertStatus.telegram_api_base || '—'}</dd>
+                    </div>
+                  </dl>
+                </section>
+              </div>
+            )}
           </div>
         </div>
       )}
