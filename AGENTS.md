@@ -31,6 +31,12 @@ running the backend via systemd as the unprivileged `serverwatch` user with
 Postgres in the `serverwatch-postgres` Docker container. Restarting that service
 needs interactive sudo; ask the user instead of attempting it.
 
+The dev workspace and the deployment share one tree: the checkout here is the
+same directory as `/opt/serverwatch` (a local edit is visible on the host and
+vice versa). Nginx serves the dashboard straight from `web/dist`, so rebuilding
+the web bundle (`make web-build`) takes effect immediately with no restart; the
+Go binary at `bin/serverwatch` only changes for clients after a service restart.
+
 ## Conventions
 
 - **Migrations**: add the next numbered file to **both**
