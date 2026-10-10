@@ -19,6 +19,7 @@ Shipped in the first release:
 - Optional account authentication and shared API token
 - Security headers, rate limiting, audit log, and opt-in Prometheus metrics
 - Data retention, backup, and restore tooling
+- Opt-in public status page (`/status`)
 - Docker Compose, systemd, and Nginx deployment templates
 
 ## Planned

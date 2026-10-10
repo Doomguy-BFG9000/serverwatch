@@ -390,6 +390,30 @@ so a host-local scraper does not need a session or token; keep it off the public
 internet (the Nginx template shows a restricted `location`). Metrics include
 `serverwatch_http_requests_total{method,status_class}` counters.
 
+### Public status page
+
+Set `SERVERWATCH_STATUS_PAGE_ENABLED=true` to serve a read-only HTML status page
+at `GET /status` (stylesheet at `GET /status.css`). It is mounted outside the
+`/api/` auth gate, so **`/status` stays reachable even when account
+authentication is enabled** — that is the point, but it means anyone who can
+reach the backend can see the monitor names you choose.
+
+The page renders only:
+
+- monitor names and their type,
+- the derived state (Operational, Outage, Maintenance, Disabled, or No data),
+- the last response time, and
+- a coarse "last checked" age,
+
+grouped by monitor group, plus a small summary. It never renders targets, URLs,
+config, result messages, or credentials, and the response is marked
+`Cache-Control: no-store`. The page is off by default; when disabled both routes
+return `404`.
+
+To share it publicly, add a `location = /status` (and `/status.css`) to your
+Nginx site that proxies to the backend, or expose the backend port directly.
+Because names are public, avoid embedding secrets in monitor names.
+
 ### Reverse proxy and TLS
 
 `deployments/nginx/serverwatch.conf` is a ready-to-use Nginx site: it serves the

@@ -81,6 +81,10 @@ func main() {
 		Config:         cfg.AlertEmail,
 		TelegramConfig: cfg.AlertTelegram,
 	}
+	statusPageHandler := &httpapi.StatusPageHandler{
+		Repository: monitorRepository,
+		Enabled:    cfg.StatusPage,
+	}
 	authHandler := &httpapi.AuthHandler{
 		Store:        authRepository,
 		AuthEnabled:  cfg.AuthEnabled,
@@ -137,6 +141,13 @@ func main() {
 	if cfg.MetricsEnabled {
 		mux.HandleFunc("GET /metrics", metrics.Handler)
 	}
+
+	// The public status page is opt-in and mounted outside /api/, so it is
+	// reachable without a session or token. It renders only names, derived
+	// state, response time, and last check time - never targets or config.
+	// When disabled the handler returns 404 for both routes.
+	mux.HandleFunc("GET /status", statusPageHandler.Status)
+	mux.HandleFunc("GET /status.css", statusPageHandler.Stylesheet)
 
 	// Middleware order (outermost first): security headers on every response,
 	// then request metrics, then rate limiting, then authentication, then the

@@ -15,6 +15,7 @@ type Config struct {
 	SessionTTL     time.Duration
 	CookieSecure   bool
 	MetricsEnabled bool
+	StatusPage     bool
 	RateLimitRPS   float64
 	RateLimitBurst int
 	TrustProxy     bool
@@ -78,6 +79,7 @@ func Load() Config {
 		SessionTTL:     envDuration("SERVERWATCH_SESSION_TTL", 30*24*time.Hour),
 		CookieSecure:   envBool("SERVERWATCH_COOKIE_SECURE", false),
 		MetricsEnabled: envBool("SERVERWATCH_METRICS_ENABLED", false),
+		StatusPage:     envBool("SERVERWATCH_STATUS_PAGE_ENABLED", false),
 		RateLimitRPS:   envFloat("SERVERWATCH_RATE_LIMIT_RPS", 10),
 		RateLimitBurst: envInt("SERVERWATCH_RATE_LIMIT_BURST", 30),
 		TrustProxy:     envBool("SERVERWATCH_TRUST_PROXY", true),

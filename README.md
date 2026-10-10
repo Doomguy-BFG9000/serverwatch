@@ -40,6 +40,7 @@ Delivered in 0.1.0:
 - Optional account authentication and shared API token
 - Security headers, rate limiting, audit log, and opt-in Prometheus metrics
 - Data retention, backup/restore, and Docker/systemd/Nginx deployment templates
+- Opt-in public status page at /status
 
 Planned:
 

@@ -24,6 +24,11 @@ The latest released Community Edition version receives security fixes.
 - **Health and readiness probes (`/health`, `/ready`) stay open** so systemd,
   Docker, and Nginx can check the service without credentials. They expose no
   secrets.
+- **The public status page (`/status`, `/status.css`) stays open when enabled.**
+  It is off by default; once `SERVERWATCH_STATUS_PAGE_ENABLED=true` it is
+  reachable without a session even when account authentication is on. It exposes
+  only monitor names, derived state, response time, and last check time, so
+  avoid putting secrets in monitor names.
 - **`/metrics` is opt-in** and should only be reachable from your monitoring
   network (restrict it in Nginx or bind it privately).
 

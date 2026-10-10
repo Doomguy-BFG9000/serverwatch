@@ -34,6 +34,10 @@ platform for websites, APIs, hosts, certificates, and DNS.
   keeping the newest result per monitor, scripts/backup.sh and
   scripts/restore.sh, readiness/health probes, and a systemd unit plus Nginx
   reverse-proxy template under deployments/.
+- **Public status page (opt-in)** - an unauthenticated, dependency-free HTML
+  status page at /status (with /status.css) that lists monitor names, derived
+  state, response time, and last check time grouped by monitor group. Disabled
+  by default; enable with SERVERWATCH_STATUS_PAGE_ENABLED=true.
 - **Release engineering** - a Makefile (build, test, check, release), a VERSION
   file, build metadata injected into the binary and dashboard and exposed via
   GET /health and the dashboard header, scripts/release.sh to produce a
