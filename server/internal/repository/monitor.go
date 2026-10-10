@@ -1064,3 +1064,34 @@ func (r *MonitorRepository) ListChartPoints(
 
 	return points, rows.Err()
 }
+
+// pruneResultsQuery deletes old check history while always preserving the most
+// recent result per monitor (the value surfaced as last_checked_at / last
+// status). Without the `id NOT IN (SELECT DISTINCT ON ...)` guard, a monitor
+// that has not been checked within the retention window would lose the single
+// row the dashboard and due-scheduler rely on.
+const pruneResultsQuery = `
+	DELETE FROM monitor_results
+	WHERE
+		checked_at < NOW() - make_interval(days => $1)
+		AND id NOT IN (
+			SELECT DISTINCT ON (monitor_id) id
+			FROM monitor_results
+			ORDER BY monitor_id, checked_at DESC
+		)
+`
+
+// PruneResults deletes check history older than the given number of days,
+// keeping the newest result for every monitor. It returns the number of rows
+// removed. A non-positive retention disables pruning.
+func (r *MonitorRepository) PruneResults(ctx context.Context, retentionDays int) (int64, error) {
+	if retentionDays <= 0 {
+		return 0, nil
+	}
+
+	tag, err := r.DB.Exec(ctx, pruneResultsQuery, retentionDays)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}

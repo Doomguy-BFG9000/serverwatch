@@ -18,6 +18,7 @@ type Config struct {
 	RateLimitRPS   float64
 	RateLimitBurst int
 	TrustProxy     bool
+	RetentionDays  int
 	AlertEmail     AlertEmailConfig
 }
 
@@ -59,6 +60,7 @@ func Load() Config {
 		RateLimitRPS:   envFloat("SERVERWATCH_RATE_LIMIT_RPS", 10),
 		RateLimitBurst: envInt("SERVERWATCH_RATE_LIMIT_BURST", 30),
 		TrustProxy:     envBool("SERVERWATCH_TRUST_PROXY", true),
+		RetentionDays:  envInt("SERVERWATCH_RESULT_RETENTION_DAYS", 30),
 		AlertEmail:     alerts,
 	}
 }

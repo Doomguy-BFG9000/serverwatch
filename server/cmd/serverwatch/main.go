@@ -55,6 +55,9 @@ func main() {
 
 	go monitorScheduler.Run(schedulerCtx)
 
+	retentionJob := monitorengine.NewRetentionJob(monitorRepository, cfg.RetentionDays)
+	go retentionJob.Run(schedulerCtx)
+
 	monitorHandler := &httpapi.MonitorHandler{
 		Repository:  monitorRepository,
 		SSLChecker:  monitorengine.NewSSLChecker(),

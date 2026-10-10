@@ -374,3 +374,38 @@ headers, and documents enabling TLS with Certbot. Set
 `deployments/systemd/serverwatch.service` is the matching systemd unit with
 `NoNewPrivileges`, `PrivateTmp`, and additional `Protect*`/`Restrict*`
 sandboxing.
+
+## Data retention
+
+`monitor_results` is the fastest-growing table: every monitor writes one row per
+check interval (for example, a monitor checked every 30 seconds produces ~2,880
+rows/day, and the defaults below keep 30 days). A built-in housekeeping job keeps
+this bounded.
+
+```dotenv
+SERVERWATCH_RESULT_RETENTION_DAYS=30
+```
+
+- The job runs once at startup and then **daily**. It deletes rows with
+  `checked_at` older than the retention window.
+- It **always preserves the newest result for every monitor**, even one that has
+  not been checked within the window, so the dashboard's last status and the
+  due-scheduler are never blanked.
+- A value of `0` disables pruning; history is then kept forever and the table
+  grows without bound.
+- The prune is logged only when it removes rows or fails, so an idle install
+  stays quiet: `journalctl -u serverwatch | grep "result retention"`.
+
+Deletes are bounded by `checked_at` and backed by the index added in migration
+`008_results_retention.sql` (`idx_monitor_results_checked_at`), so pruning stays
+fast as the table grows.
+
+### Sizing and backup
+
+Roughly, `monitor_results` occupies about 100 bytes/row including indexes, so
+`monitors × (86400 / interval_seconds) × retention_days × 100 bytes`. Ten
+monitors checked every minute with 30-day retention is on the order of hundreds
+of megabytes. Trending and chart endpoints query this table, so keep an eye on
+disk usage and tune the retention window accordingly. See
+[Backup and restore](BACKUP_RESTORE.md) for the database dump/restore procedure
+and the `scripts/backup.sh` / `scripts/restore.sh` helpers.

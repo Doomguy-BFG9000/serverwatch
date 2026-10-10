@@ -89,6 +89,25 @@ func TestAuthMigration(t *testing.T) {
 	}
 }
 
+func TestResultsRetentionMigration(t *testing.T) {
+	contents, err := migrationFiles.ReadFile("migrations/008_results_retention.sql")
+	if err != nil {
+		t.Fatalf("read results retention migration: %v", err)
+	}
+	migration := string(contents)
+
+	required := []string{
+		"CREATE INDEX IF NOT EXISTS idx_monitor_results_checked_at",
+		"ON monitor_results (checked_at)",
+	}
+
+	for _, fragment := range required {
+		if !strings.Contains(migration, fragment) {
+			t.Fatalf("migration does not contain %q", fragment)
+		}
+	}
+}
+
 // TestMigrationsMirrored guards the project invariant that the two migration
 // directories stay byte-for-byte identical. The embedded copy is what actually
 // runs; the top-level database/migrations copy is the human-facing source. If

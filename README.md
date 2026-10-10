@@ -208,3 +208,19 @@ Phase 0.50 adds hardening that is on by default plus opt-in features:
   TLS guidance and service sandboxing.
 
 See [Security hardening](docs/CONFIGURATION.md#security-hardening) for details.
+
+## Data retention
+
+Check history (`monitor_results`) is the fastest-growing table, so a built-in job
+keeps it bounded:
+
+```dotenv
+SERVERWATCH_RESULT_RETENTION_DAYS=30
+```
+
+Once at startup and then daily, it deletes results older than the window while
+always keeping the newest result for every monitor (so no monitor's last status
+is ever blanked). Set it to `0` to keep history forever. See
+[Data retention](docs/CONFIGURATION.md#data-retention) and
+[Backup and restore](docs/BACKUP_RESTORE.md) (`scripts/backup.sh`,
+`scripts/restore.sh`).
