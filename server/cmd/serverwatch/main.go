@@ -36,6 +36,9 @@ func main() {
 	groupRepository := &repository.GroupRepository{
 		DB: db,
 	}
+	authRepository := &repository.AuthRepository{
+		DB: db,
+	}
 	monitorScheduler := monitorengine.NewScheduler(
 		monitorRepository,
 	)
@@ -62,11 +65,22 @@ func main() {
 		Repository: groupRepository,
 	}
 	alertHandler := &httpapi.AlertHandler{Config: cfg.AlertEmail}
+	authHandler := &httpapi.AuthHandler{
+		Store:        authRepository,
+		AuthEnabled:  cfg.AuthEnabled,
+		SessionTTL:   cfg.SessionTTL,
+		CookieSecure: cfg.CookieSecure,
+	}
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", healthHandler.Health)
 	mux.HandleFunc("GET /ready", healthHandler.Ready)
+	mux.HandleFunc("GET /api/v1/auth/status", authHandler.Status)
+	mux.HandleFunc("POST /api/v1/auth/setup", authHandler.Setup)
+	mux.HandleFunc("POST /api/v1/auth/login", authHandler.Login)
+	mux.HandleFunc("POST /api/v1/auth/logout", authHandler.Logout)
+	mux.HandleFunc("GET /api/v1/auth/me", authHandler.Me)
 	mux.HandleFunc("GET /api/v1/alerts/status", alertHandler.Status)
 	mux.HandleFunc("GET /api/v1/groups", groupHandler.List)
 	mux.HandleFunc("POST /api/v1/groups", groupHandler.Create)
@@ -100,7 +114,7 @@ func main() {
 	)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewAPITokenMiddleware(cfg.APIToken, mux),
+		Handler:           httpapi.NewAuthMiddleware(cfg.AuthEnabled, cfg.APIToken, authRepository, mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,

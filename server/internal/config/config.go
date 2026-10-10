@@ -5,12 +5,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
-	HTTPAddr   string
-	APIToken   string
-	AlertEmail AlertEmailConfig
+	HTTPAddr     string
+	APIToken     string
+	AuthEnabled  bool
+	SessionTTL   time.Duration
+	CookieSecure bool
+	AlertEmail   AlertEmailConfig
 }
 
 type AlertEmailConfig struct {
@@ -42,10 +46,23 @@ func Load() Config {
 		log.Printf("alert email is enabled but SMTP_HOST, SMTP_PORT, SMTP_FROM, and SMTP_TO must be configured")
 	}
 	return Config{
-		HTTPAddr:   addr,
-		APIToken:   strings.TrimSpace(os.Getenv("SERVERWATCH_API_TOKEN")),
-		AlertEmail: alerts,
+		HTTPAddr:     addr,
+		APIToken:     strings.TrimSpace(os.Getenv("SERVERWATCH_API_TOKEN")),
+		AuthEnabled:  envBool("SERVERWATCH_AUTH_ENABLED", false),
+		SessionTTL:   envDuration("SERVERWATCH_SESSION_TTL", 30*24*time.Hour),
+		CookieSecure: envBool("SERVERWATCH_COOKIE_SECURE", false),
+		AlertEmail:   alerts,
 	}
+}
+
+// envDuration parses a Go duration string (for example "720h" or "30m"). An
+// empty or invalid value returns the fallback.
+func envDuration(key string, fallback time.Duration) time.Duration {
+	value, err := time.ParseDuration(os.Getenv(key))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 func envBool(key string, fallback bool) bool {

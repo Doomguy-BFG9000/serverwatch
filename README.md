@@ -168,3 +168,25 @@ The token is a single shared secret for the whole installation. It is not a
 per-user account system. See
 [API access token](docs/CONFIGURATION.md#api-access-token) for configuration
 and operational details.
+
+## Account authentication
+
+Setting `SERVERWATCH_AUTH_ENABLED=true` turns on single-user account
+authentication for the dashboard and API. Like the API token, this is opt-in
+and off by default, so an existing open installation is unaffected until the
+operator enables it.
+
+- On first visit, ServerWatch asks you to create the administrator account
+  (email and password). This first-run setup is only offered while no account
+  exists, so it cannot be used to add users or take over an initialized
+  deployment.
+- After that, visitors must sign in. Sessions are tracked with an HttpOnly
+  cookie and can be ended with **Sign out**.
+- `/health`, `/ready`, and the sign-in endpoints stay open; every other
+  `/api/v1/...` route requires a valid session. The `SERVERWATCH_API_TOKEN`
+  bearer token keeps working for scripts and health tooling.
+
+Passwords are stored as PBKDF2-HMAC-SHA256 hashes with a random per-password
+salt. This release provides a single administrator account, not per-user roles
+or multi-tenant permissions. See
+[Account authentication](docs/CONFIGURATION.md#account-authentication).

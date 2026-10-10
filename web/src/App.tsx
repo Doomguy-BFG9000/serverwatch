@@ -211,6 +211,24 @@ type AlertStatus = {
   recipient_configured: boolean
 }
 
+// Phase 0.49 authentication types. AuthEnabled is false unless the operator
+// sets SERVERWATCH_AUTH_ENABLED=true, in which case the dashboard shows a login
+// (or first-run setup) screen before any monitor data is loaded.
+type AuthUser = {
+  id: number
+  email: string
+  display_name: string
+  is_admin: boolean
+  created_at: string
+}
+
+type AuthStatus = {
+  auth_enabled: boolean
+  setup_required: boolean
+  authenticated: boolean
+  user?: AuthUser
+}
+
 const emptyMonitor: NewMonitor = {
   name: '',
   monitor_type: 'https',
@@ -425,6 +443,17 @@ function App() {
   const [showTokenPanel, setShowTokenPanel] = useState(false)
   const [tokenDraft, setTokenDraft] = useState('')
   const [authError, setAuthError] = useState(false)
+
+  // Phase 0.49 account session state. `authStatus` is null until the initial
+  // status check resolves, and `checkingAuth` keeps the first paint from
+  // flashing the dashboard before we know whether login is required.
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
+  const [authFormError, setAuthFormError] = useState('')
+  const [authSubmitting, setAuthSubmitting] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [setupDisplayName, setSetupDisplayName] = useState('')
 
   const [showGroupManager, setShowGroupManager] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
@@ -650,10 +679,139 @@ function App() {
     }
   }
 
-  useEffect(() => {
+  // refreshData reloads every dashboard resource that is behind authentication.
+  // It is called once the auth gate is satisfied and on the polling interval.
+  async function refreshData() {
     loadMonitors()
     loadGroups()
     loadAlertStatus()
+  }
+
+  // checkAuthStatus discovers whether the deployment enforces accounts and
+  // whether this browser already holds a valid session.
+  async function checkAuthStatus() {
+    try {
+      const response = await apiFetch('/api/v1/auth/status')
+      if (response.ok) {
+        setAuthStatus((await response.json()) as AuthStatus)
+      } else {
+        setAuthStatus({ auth_enabled: false, setup_required: false, authenticated: false })
+      }
+    } catch {
+      setAuthStatus({ auth_enabled: false, setup_required: false, authenticated: false })
+    } finally {
+      setCheckingAuth(false)
+    }
+  }
+
+  // submitLogin / submitSetup talk only to the public auth endpoints and, on
+  // success, reload the dashboard resources now that a session cookie exists.
+  async function submitLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAuthSubmitting(true)
+    setAuthFormError('')
+    try {
+      const response = await apiFetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        setAuthFormError(
+          data?.error === 'invalid_credentials'
+            ? 'Incorrect email or password.'
+            : 'Unable to sign in. Please try again.',
+        )
+        return
+      }
+      setLoginPassword('')
+      setAuthStatus({
+        auth_enabled: true,
+        setup_required: false,
+        authenticated: true,
+        user: data?.user,
+      })
+      setLoading(true)
+      refreshData()
+    } catch {
+      setAuthFormError('Unable to reach the server. Please try again.')
+    } finally {
+      setAuthSubmitting(false)
+    }
+  }
+
+  async function submitSetup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAuthSubmitting(true)
+    setAuthFormError('')
+    try {
+      const response = await apiFetch('/api/v1/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: loginEmail,
+          password: loginPassword,
+          display_name: setupDisplayName,
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        setAuthFormError(
+          typeof data?.error === 'string'
+            ? data.error
+            : 'Unable to create the administrator account.',
+        )
+        return
+      }
+      setLoginPassword('')
+      setSetupDisplayName('')
+      setAuthStatus({
+        auth_enabled: true,
+        setup_required: false,
+        authenticated: true,
+        user: data?.user,
+      })
+      setLoading(true)
+      refreshData()
+    } catch {
+      setAuthFormError('Unable to reach the server. Please try again.')
+    } finally {
+      setAuthSubmitting(false)
+    }
+  }
+
+  async function logout() {
+    try {
+      await apiFetch('/api/v1/auth/logout', { method: 'POST' })
+    } catch {
+      // A failed logout still clears local state; the cookie is removed
+      // server-side on the next successful call.
+    }
+    setMonitors([])
+    setGroups([])
+    setAuthStatus((previous) =>
+      previous
+        ? { ...previous, authenticated: false, user: undefined }
+        : { auth_enabled: true, setup_required: false, authenticated: false },
+    )
+  }
+
+  useEffect(() => {
+    checkAuthStatus()
+  }, [])
+
+  useEffect(() => {
+    // Only poll once we know whether the dashboard is accessible. When auth is
+    // required and no session exists, the login screen is shown instead.
+    if (authStatus === null) {
+      return
+    }
+    if (authStatus.auth_enabled && !authStatus.authenticated) {
+      return
+    }
+
+    refreshData()
 
     const timer = window.setInterval(() => {
       loadMonitors()
@@ -661,7 +819,7 @@ function App() {
     }, 10000)
 
     return () => window.clearInterval(timer)
-  }, [])
+  }, [authStatus?.auth_enabled, authStatus?.authenticated])
 
   // Dashboard health summary is a global overview of every configured
   // monitor. It deliberately reads the unfiltered `monitors` collection so
@@ -1652,6 +1810,94 @@ function buildResponseChart(data: MonitorChartPoint[]) {
     average,
   }
 }
+  // Auth gate: while determining the auth model show nothing to avoid a flash,
+  // and when accounts are required but no session exists show the login or
+  // first-run setup screen instead of the dashboard.
+  if (checkingAuth) {
+    return <div className="auth-shell" aria-busy="true" />
+  }
+
+  if (authStatus?.auth_enabled && !authStatus.authenticated) {
+    const needsSetup = authStatus.setup_required
+
+    return (
+      <div className="auth-shell">
+        <form
+          className="auth-card"
+          onSubmit={needsSetup ? submitSetup : submitLogin}
+        >
+          <div className="auth-brand">
+            <h1>ServerWatch</h1>
+            <p>
+              {needsSetup
+                ? 'Create the administrator account to finish setup.'
+                : 'Sign in to continue.'}
+            </p>
+          </div>
+
+          {authFormError && (
+            <div className="form-error" role="alert">
+              {authFormError}
+            </div>
+          )}
+
+          <label>
+            Email
+            <input
+              type="email"
+              value={loginEmail}
+              onChange={(event) => setLoginEmail(event.target.value)}
+              autoComplete="username"
+              required
+            />
+          </label>
+
+          {needsSetup && (
+            <label>
+              Display name
+              <input
+                type="text"
+                value={setupDisplayName}
+                onChange={(event) => setSetupDisplayName(event.target.value)}
+                autoComplete="name"
+                placeholder="Optional"
+              />
+            </label>
+          )}
+
+          <label>
+            Password
+            <input
+              type="password"
+              value={loginPassword}
+              onChange={(event) => setLoginPassword(event.target.value)}
+              autoComplete={needsSetup ? 'new-password' : 'current-password'}
+              minLength={needsSetup ? 8 : undefined}
+              required
+            />
+          </label>
+
+          {needsSetup && (
+            <p className="auth-hint">Use at least 8 characters.</p>
+          )}
+
+          <button
+            className="primary-button auth-submit"
+            type="submit"
+            disabled={authSubmitting}
+          >
+            {authSubmitting
+              ? 'Please wait…'
+              : needsSetup
+                ? 'Create administrator'
+                : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    )
+  }
+
+
   return (
     <div className="app">
       <header className="topbar">
@@ -1680,6 +1926,21 @@ function buildResponseChart(data: MonitorChartPoint[]) {
           >
             {configuredToken ? 'API Token ✓' : 'API Token'}
           </button>
+
+          {authStatus?.auth_enabled && authStatus.user && (
+            <div className="user-menu">
+              <span className="user-name" title={authStatus.user.email}>
+                {authStatus.user.display_name || authStatus.user.email}
+              </span>
+              <button
+                type="button"
+                className="token-button"
+                onClick={logout}
+              >
+                Sign out
+              </button>
+            </div>
+          )}
 
           <div className="live-indicator">
             <span />

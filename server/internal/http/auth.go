@@ -1,27 +1,39 @@
 package httpapi
 
-// API token authentication (opt-in).
+// Authentication middleware (opt-in).
 //
-// ServerWatch Community Edition can require a bearer token on its API surface
-// when the operator sets SERVERWATCH_API_TOKEN. When the variable is empty the
-// middleware is a pass-through and the historic open behavior is preserved, so
-// enabling this feature can never break an existing installation.
+// ServerWatch Community Edition supports two independent, opt-in mechanisms:
 //
-// Health endpoints are intentionally exempt so container and systemd
-// liveness/readiness probes keep working after a token is configured.
+//   * A shared bearer token (SERVERWATCH_API_TOKEN) for scripts and the
+//     Phase 0.48 token flow.
+//   * Account sessions (SERVERWATCH_AUTH_ENABLED=true) using an HttpOnly
+//     session cookie created by the login endpoint.
+//
+// When neither is configured the middleware is a pass-through and the historic
+// open behavior is preserved, so enabling authentication never breaks an
+// existing installation. Health endpoints and the auth entry points stay open
+// so probes and login keep working.
 
 import (
 	"crypto/subtle"
 	"net/http"
 	"strings"
+
+	"github.com/serverwatch/serverwatch/server/internal/service"
 )
 
-// NewAPITokenMiddleware returns a middleware that enforces a bearer token on
-// every path under /api/. The token is compared with crypto/subtle to avoid
-// leaking the value through response-timing differences. When token is empty
-// the original handler is returned unchanged.
+// NewAPITokenMiddleware enforces a small shared bearer token on every path
+// under /api/. It is the token-only form of NewAuthMiddleware and is kept for
+// callers that only need the shared-secret behavior.
 func NewAPITokenMiddleware(token string, next http.Handler) http.Handler {
-	if token == "" {
+	return NewAuthMiddleware(false, token, nil, next)
+}
+
+// NewAuthMiddleware returns a middleware that protects /api/ routes with either
+// a valid bearer token or a valid session cookie, depending on what is enabled.
+// Authentication endpoints and health probes are always reachable.
+func NewAuthMiddleware(enabled bool, apiToken string, store AuthStore, next http.Handler) http.Handler {
+	if !enabled && apiToken == "" {
 		return next
 	}
 
@@ -31,16 +43,40 @@ func NewAPITokenMiddleware(token string, next http.Handler) http.Handler {
 			return
 		}
 
-		if !validBearerToken(r.Header.Get("Authorization"), token) {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="serverwatch"`)
-			writeJSON(w, http.StatusUnauthorized, map[string]any{
-				"error": "unauthorized",
-			})
+		if isAuthPublicPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		if apiToken != "" && validBearerToken(r.Header.Get("Authorization"), apiToken) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if enabled && store != nil {
+			if cookie, err := r.Cookie(sessionCookieName); err == nil && cookie.Value != "" {
+				if _, err := store.FindUserBySession(r.Context(), service.HashSessionToken(cookie.Value)); err == nil {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+		}
+
+		w.Header().Set("WWW-Authenticate", `Bearer realm="serverwatch"`)
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
 	})
+}
+
+// isAuthPublicPath lists API routes that must remain reachable without a
+// session so the dashboard can discover the auth model and the user can sign
+// in, sign up the first administrator, or sign out.
+func isAuthPublicPath(path string) bool {
+	switch path {
+	case "/api/v1/auth/status", "/api/v1/auth/login", "/api/v1/auth/setup", "/api/v1/auth/logout":
+		return true
+	default:
+		return false
+	}
 }
 
 // validBearerToken reports whether the Authorization header carries exactly the

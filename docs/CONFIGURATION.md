@@ -259,3 +259,44 @@ token and reloading returns the browser to unauthenticated access.
 This is a single shared secret for the whole installation; it is not a multi-user
 account system, has no roles, and does not provide an audit trail of who made a
 change.
+
+## Account authentication
+
+Setting `SERVERWATCH_AUTH_ENABLED=true` protects the dashboard and API with a
+login. It is read once at startup, so change it in the environment file and
+restart the service:
+
+```dotenv
+SERVERWATCH_AUTH_ENABLED=true
+SERVERWATCH_SESSION_TTL=720h
+SERVERWATCH_COOKIE_SECURE=false
+```
+
+- `SERVERWATCH_SESSION_TTL` is a Go duration for how long a login lasts
+  (default `720h`, 30 days).
+- `SERVERWATCH_COOKIE_SECURE` adds the cookie `Secure` attribute. Leave it
+  `false` for plain-HTTP LAN access; set it `true` when the dashboard is served
+  over HTTPS.
+
+When authentication is enabled and no account exists yet, `GET
+/api/v1/auth/status` reports `setup_required: true` and the dashboard shows a
+first-run form. `POST /api/v1/auth/setup` creates the administrator only while
+the users table is empty; once an account exists it returns `409` and can never
+be used to add users or take over the installation. Afterwards, `POST
+/api/v1/auth/login` starts a session, `POST /api/v1/auth/logout` ends it, and
+`GET /api/v1/auth/me` returns the current user.
+
+Sessions are stored as SHA-256 hashes of 256-bit random tokens, delivered in an
+HttpOnly, SameSite=Lax cookie (add `Secure` via `SERVERWATCH_COOKIE_SECURE`).
+Passwords are stored as PBKDF2-HMAC-SHA256 hashes (210,000 iterations, random
+16-byte salt) and verified in constant time.
+
+While authentication is enabled, the middleware accepts **either** a valid
+session cookie **or** a valid `SERVERWATCH_API_TOKEN` bearer token, so scripts
+and health checks keep working. `/health`, `/ready`, and the four `/api/v1/auth/*`
+entry points are always reachable; every other `/api/v1/...` route returns `401`
+without a valid session or token.
+
+This is a single-administrator model. There are no per-user roles, no
+multi-tenant permissions, and no audit log of individual changes; adding those
+is future work.
