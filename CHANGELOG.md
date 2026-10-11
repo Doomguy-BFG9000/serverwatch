@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Container image** - a multi-stage `Dockerfile` builds the dashboard and
-  backend into a single self-contained image (`ghcr.io/serverwatch/serverwatch`)
+  backend into a single self-contained image (`ghcr.io/smartphpfreelancers-sys/serverwatch`)
   that serves the dashboard, proxies the API, and runs the scheduler. A
   full-stack compose file under `deployments/docker/` runs it with Postgres, and
   a GitHub Actions workflow publishes multi-arch (amd64/arm64) tags on `v*`
@@ -67,5 +67,5 @@ platform for websites, APIs, hosts, certificates, and DNS.
   GET /health and the dashboard header, scripts/release.sh to produce a
   versioned tarball with checksums, and CI/release GitHub Actions workflows.
 
-[Unreleased]: https://github.com/serverwatch/serverwatch/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/serverwatch/serverwatch/releases/tag/v0.1.0
+[Unreleased]: https://github.com/smartphpfreelancers-sys/serverwatch/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/smartphpfreelancers-sys/serverwatch/releases/tag/v0.1.0

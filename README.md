@@ -19,7 +19,7 @@ docker compose --env-file serverwatch.env up -d postgres
 ```
 
 Download a prebuilt bundle from
-[Releases](https://github.com/serverwatch/serverwatch/releases), or build from
+[Releases](https://github.com/smartphpfreelancers-sys/serverwatch/releases), or build from
 source with `make build && make web-build`. Full walkthrough:
 [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
@@ -38,7 +38,7 @@ docker compose --env-file serverwatch.env up -d
 # open http://localhost:8080
 ```
 
-The published image is `ghcr.io/serverwatch/serverwatch` (`:latest`, `:1.2`,
+The published image is `ghcr.io/smartphpfreelancers-sys/serverwatch` (`:latest`, `:1.2`,
 `:1.2.3`, or `:edge` for the tip of `main`). It is a multi-arch manifest for
 `linux/amd64` and `linux/arm64`.
 
@@ -47,7 +47,7 @@ Prefer a single `docker run` against your own database?
 ```bash
 docker run -d --name serverwatch -p 8080:80 \
   -e DATABASE_URL="postgres://user:pass@your-db:5432/serverwatch?sslmode=disable" \
-  ghcr.io/serverwatch/serverwatch:latest
+  ghcr.io/smartphpfreelancers-sys/serverwatch:latest
 ```
 
 The backend and migrations run automatically on first start. Secrets are read
