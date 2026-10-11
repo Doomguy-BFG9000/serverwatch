@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gradient brand accent, status-colored cards and accents, a sticky glass top
   bar, animated status indicators, and refined motion. The public status page
   now shares the same visual language. No functional changes.
+- **Ambient dashboard background** - an animated, CSS-only aurora and dot-grid
+  backdrop, frosted-glass surfaces, per-status card accent/tint/glow, colored
+  status dots, and an animated gradient brand lockup. The public status page
+  mirrors the backdrop. Uses no inline styles or external assets to stay within
+  the strict Content-Security-Policy.
 
 ## [0.1.0] - 2026-10-10
 
