@@ -95,6 +95,25 @@ Go binary at `bin/serverwatch` only changes for clients after a service restart.
 - Funding is configured in `.github/FUNDING.yml` via the PayPal link for
   `kirupa.business@gmail.com`.
 
+## Building and deploying the backend
+
+- The Go toolchain lives on the remote at `/usr/local/go/bin` (not on PATH).
+  The sandbox has neither Go nor Docker, so **build on the remote** (native FS):
+  `ssh serverwatch-target 'export PATH=$PATH:/usr/local/go/bin; cd /opt/serverwatch/server && go build -ldflags "$(make -n build | sed ...)" -o ../bin/serverwatch.new ./cmd/serverwatch'`
+  — or use the remote's `make build`.
+- The Go binary embeds the public status page (`server/internal/http/status_template.go`
+  → `/status.css`), so a **status-page styling change needs a binary rebuild**;
+  the dashboard bundle (`web/dist`, git-ignored) is served by Nginx and is
+  already current on the shared mount.
+- Swapping a running binary: build to `bin/serverwatch.new`, `cp -a` the old one
+  to `bin/serverwatch.bak.<ts>`, then `mv -f` the new one into place (writing
+  over the live file fails with `ETXTBSY`). The running process keeps the old
+  image until it is restarted.
+- Restart needs root: `ssh serverwatch-target 'sudo systemctl restart serverwatch'`
+  (the `serverwatch` user's sudo requires a password, so the agent cannot do it).
+  Verify afterwards with `curl -s localhost:8080/health` — it should report the
+  new commit.
+
 ## Docs map
 
 `README.md` (overview, configuration) • `docs/INSTALLATION.md` •
