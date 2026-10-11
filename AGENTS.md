@@ -54,6 +54,12 @@ Go binary at `bin/serverwatch` only changes for clients after a service restart.
   reached. New HTTP/config behavior should have a Go test.
 - **Go**: run `gofmt`; CI fails on unformatted files.
 - **Web**: `pnpm lint` (oxlint) must stay warning-free.
+- **Web styling**: all colors, radii, shadows and font sizes resolve to the CSS
+  variables in `web/src/index.css`; do not hard-code hex values in `App.css`.
+  Light and dark themes are selected by `data-theme` on `<html>` (toggled in
+  `App.tsx`, defaulting to `prefers-color-scheme`). The CSP is `style-src
+  'self'`, so no inline styles and no remote fonts — Inter is self-hosted via
+  `@fontsource-variable/inter`.
 
 ## Docs map
 
