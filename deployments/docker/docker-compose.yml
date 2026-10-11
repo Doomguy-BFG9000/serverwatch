@@ -1,0 +1,68 @@
+# ServerWatch Community Edition - full stack (app + Postgres).
+#
+# Quick start (from the repository root):
+#   cp .env.example serverwatch.env      # then edit POSTGRES_PASSWORD etc.
+#   docker compose -f deployments/docker/docker-compose.yml \
+#     --env-file serverwatch.env up -d
+#   open http://localhost:8080
+#
+# The `app` service uses the published image. To build from this checkout
+# instead, run with `--build`. Postgres is private to the compose network; only
+# the app publishes a port.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: serverwatch-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-serverwatch}
+      POSTGRES_USER: ${POSTGRES_USER:-serverwatch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your env file}
+    volumes:
+      - serverwatch_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-serverwatch} -d ${POSTGRES_DB:-serverwatch}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ${SERVERWATCH_IMAGE:-ghcr.io/serverwatch/serverwatch:latest}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+        COMMIT: ${COMMIT:-unknown}
+    container_name: serverwatch-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-serverwatch}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your env file}@postgres:5432/${POSTGRES_DB:-serverwatch}?sslmode=disable
+      SERVERWATCH_HTTP_ADDR: 127.0.0.1:8080
+      SERVERWATCH_API_TOKEN: ${SERVERWATCH_API_TOKEN:-}
+      SERVERWATCH_AUTH_ENABLED: ${SERVERWATCH_AUTH_ENABLED:-false}
+      SERVERWATCH_SESSION_TTL: ${SERVERWATCH_SESSION_TTL:-720h}
+      SERVERWATCH_COOKIE_SECURE: ${SERVERWATCH_COOKIE_SECURE:-false}
+      SERVERWATCH_STATUS_PAGE_ENABLED: ${SERVERWATCH_STATUS_PAGE_ENABLED:-false}
+      SERVERWATCH_METRICS_ENABLED: ${SERVERWATCH_METRICS_ENABLED:-false}
+      SERVERWATCH_RESULT_RETENTION_DAYS: ${SERVERWATCH_RESULT_RETENTION_DAYS:-30}
+      SERVERWATCH_ALERT_EMAIL_ENABLED: ${SERVERWATCH_ALERT_EMAIL_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TO: ${SMTP_TO:-}
+      SERVERWATCH_ALERT_TELEGRAM_ENABLED: ${SERVERWATCH_ALERT_TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-}
+    ports:
+      - "${SERVERWATCH_HTTP_PORT:-8080}:80"
+
+volumes:
+  serverwatch_postgres_data:

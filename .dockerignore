@@ -1,0 +1,20 @@
+# Keep the build context small and, above all, keep secrets out of the image.
+.git
+.gitignore
+.github
+
+# Never bake environment files or local secrets into an image.
+.env
+.env.*
+serverwatch.env
+
+# Local build output and dependencies (rebuilt inside the image).
+dist/
+web/dist/
+web/node_modules/
+**/node_modules/
+
+# Local tooling / editor state.
+.vscode/
+.idea/
+*.log

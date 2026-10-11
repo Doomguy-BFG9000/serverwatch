@@ -23,6 +23,38 @@ Download a prebuilt bundle from
 source with `make build && make web-build`. Full walkthrough:
 [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
+## Run with Docker
+
+The container is self-contained: it serves the dashboard, proxies the API, and
+runs the monitor scheduler. It only needs a Postgres database.
+
+```bash
+# 1. Grab a compose file and an env file
+curl -O https://raw.githubusercontent.com/serverwatch/serverwatch/main/deployments/docker/docker-compose.yml
+cp .env.example serverwatch.env        # edit POSTGRES_PASSWORD and any secrets
+
+# 2. Start the whole stack (app + Postgres)
+docker compose --env-file serverwatch.env up -d
+# open http://localhost:8080
+```
+
+The published image is `ghcr.io/serverwatch/serverwatch` (`:latest`, `:1.2`,
+`:1.2.3`, or `:edge` for the tip of `main`). It is a multi-arch manifest for
+`linux/amd64` and `linux/arm64`.
+
+Prefer a single `docker run` against your own database?
+
+```bash
+docker run -d --name serverwatch -p 8080:80 \
+  -e DATABASE_URL="postgres://user:pass@your-db:5432/serverwatch?sslmode=disable" \
+  ghcr.io/serverwatch/serverwatch:latest
+```
+
+The backend and migrations run automatically on first start. Secrets are read
+from environment variables only - never bake them into the image. See
+[deployments/docker/](deployments/docker/) for the compose file, the build
+`Dockerfile`, and the container Nginx config.
+
 ## Features
 
 Delivered in 0.1.0:
@@ -297,6 +329,21 @@ The version in `VERSION` is injected into the backend binary and the dashboard,
 so `GET /health` and the dashboard header report the running build. Pushing a
 `v*` tag publishes a release bundle via GitHub Actions. See
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+A `v*` tag also publishes a multi-arch container image to the GitHub Container
+Registry (`ghcr.io/<owner>/serverwatch`). Build the image locally with:
+
+```bash
+docker build --build-arg VERSION=0.1.0 -t serverwatch:dev .
+```
+
+## Support
+
+ServerWatch Community Edition is Apache-2.0 licensed and free to self-host.
+Sponsorship keeps maintenance going and funds new features - it is a donation,
+not a license or a support contract. If the project is useful to you, the
+Sponsor button on the repository is the best way to help. Funding platforms are
+configured in [.github/FUNDING.yml](.github/FUNDING.yml).
 
 ## Contributing
 

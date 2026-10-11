@@ -1,0 +1,16 @@
+# Sponsorship options shown by GitHub's "Sponsor" button.
+#
+# ServerWatch Community Edition is Apache-2.0 licensed and free to self-host.
+# Sponsorship funds ongoing maintenance and new features; it is a donation, not
+# a license or a purchase.
+#
+# Uncomment and fill in the platform(s) you use, then remove this note. At least
+# one entry is required for the button to appear.
+
+# github: [your-github-username]
+# ko_fi: your-ko-fi-username
+# liberapay: your-liberapay-username
+# open_collective: your-collective-slug
+# patreon: your-patreon-username
+# buy_me_a_coffee: your-bmc-username
+# custom: ["https://example.com/donate"]

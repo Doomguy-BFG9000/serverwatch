@@ -61,6 +61,19 @@ Go binary at `bin/serverwatch` only changes for clients after a service restart.
   'self'`, so no inline styles and no remote fonts — Inter is self-hosted via
   `@fontsource-variable/inter`.
 
+## Containers
+
+- `Dockerfile` builds one self-contained image: Nginx serves `web/dist` and
+  proxies `/api`, `/health`, `/ready`, `/status`, `/metrics` to the Go backend on
+  loopback. `deployments/docker/nginx.conf` is the in-container config and
+  `deployments/docker/entrypoint.sh` runs both processes.
+- `deployments/docker/docker-compose.yml` is the full stack (app + Postgres).
+  The top-level `docker-compose.yml` stays Postgres-only for native installs.
+- `.github/workflows/docker.yml` publishes multi-arch (amd64/arm64) images to
+  GHCR on `v*` tags (`:X.Y.Z`, `:X.Y`, `:latest`) and `:edge` from `main`.
+- `.dockerignore` must keep `.env`/`serverwatch.env` out of the build context so
+  secrets are never baked into an image.
+
 ## Docs map
 
 `README.md` (overview, configuration) • `docs/INSTALLATION.md` •

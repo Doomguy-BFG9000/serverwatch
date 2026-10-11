@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Container image** - a multi-stage `Dockerfile` builds the dashboard and
+  backend into a single self-contained image (`ghcr.io/serverwatch/serverwatch`)
+  that serves the dashboard, proxies the API, and runs the scheduler. A
+  full-stack compose file under `deployments/docker/` runs it with Postgres, and
+  a GitHub Actions workflow publishes multi-arch (amd64/arm64) tags on `v*`
+  releases and `:edge` from `main`.
+- **Sponsorship** - `.github/FUNDING.yml` enables the repository Sponsor button.
+
 ### Changed
 
 - **Dashboard redesign** - new design-token system with self-hosted Inter,
