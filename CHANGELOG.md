@@ -7,29 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **Container image** - a multi-stage `Dockerfile` builds the dashboard and
-  backend into a single self-contained image (`ghcr.io/smartphpfreelancers-sys/serverwatch`)
-  that serves the dashboard, proxies the API, and runs the scheduler. A
-  full-stack compose file under `deployments/docker/` runs it with Postgres, and
-  a GitHub Actions workflow publishes multi-arch (amd64/arm64) tags on `v*`
-  releases and `:edge` from `main`.
-- **Sponsorship** - `.github/FUNDING.yml` enables the repository Sponsor button.
-
-### Changed
-
-- **Dashboard redesign** - new design-token system with self-hosted Inter,
-  light/dark themes (per-browser toggle, defaulting to the OS preference), a
-  gradient brand accent, status-colored cards and accents, a sticky glass top
-  bar, animated status indicators, and refined motion. The public status page
-  now shares the same visual language. No functional changes.
-- **Ambient dashboard background** - an animated, CSS-only aurora and dot-grid
-  backdrop, frosted-glass surfaces, per-status card accent/tint/glow, colored
-  status dots, and an animated gradient brand lockup. The public status page
-  mirrors the backdrop. Uses no inline styles or external assets to stay within
-  the strict Content-Security-Policy.
-
 ## [0.1.0] - 2026-10-10
 
 First Community Edition release: a lightweight, self-hosted uptime monitoring
@@ -66,6 +43,26 @@ platform for websites, APIs, hosts, certificates, and DNS.
   file, build metadata injected into the binary and dashboard and exposed via
   GET /health and the dashboard header, scripts/release.sh to produce a
   versioned tarball with checksums, and CI/release GitHub Actions workflows.
+- **Container image** - a multi-stage `Dockerfile` builds the dashboard and
+  backend into a single self-contained image
+  (`ghcr.io/smartphpfreelancers-sys/serverwatch`) that serves the dashboard,
+  proxies the API, and runs the scheduler. A full-stack compose file under
+  `deployments/docker/` runs it with Postgres, and a GitHub Actions workflow
+  publishes multi-arch (amd64/arm64) tags on `v*` releases and `:edge` from
+  `main`.
+- **Sponsorship** - `.github/FUNDING.yml` enables the repository Sponsor button.
+
+### Changed
+
+- **Dashboard redesign** - a design-token system with self-hosted Inter,
+  light/dark themes (per-browser toggle, defaulting to the OS preference), a
+  gradient brand accent, status-colored cards and accents, a sticky glass top
+  bar, animated status indicators, and refined motion. An animated, CSS-only
+  aurora and dot-grid backdrop, frosted-glass surfaces, per-status card
+  accent/tint/glow, colored status dots, and an animated gradient brand lockup
+  round it out; the public status page shares the same visual language. Uses no
+  inline styles or external assets to stay within the strict
+  Content-Security-Policy. No functional changes.
 
 [Unreleased]: https://github.com/smartphpfreelancers-sys/serverwatch/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/smartphpfreelancers-sys/serverwatch/releases/tag/v0.1.0
