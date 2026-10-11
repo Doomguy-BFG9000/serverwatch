@@ -74,6 +74,27 @@ Go binary at `bin/serverwatch` only changes for clients after a service restart.
 - `.dockerignore` must keep `.env`/`serverwatch.env` out of the build context so
   secrets are never baked into an image.
 
+## GitHub publishing
+
+- Canonical repository is `github.com/smartphpfreelancers-sys/serverwatch`,
+  published image `ghcr.io/smartphpfreelancers-sys/serverwatch`.
+- The repository `/opt/serverwatch` inside this sandbox is mounted over
+  `fuse.sshfs` (from `serverwatch-target`), so git operations that read many
+  objects (`git status`, `pack-objects`, a full `git push`) are extremely slow.
+  **Push from the remote host, not from the mount**: hold the token in a
+  0600 temp file on the remote and use a `credential.helper` that cats it, e.g.
+  `ssh serverwatch-target 'cd /opt/serverwatch; git -c credential.helper="!f(){ echo username=x-access-token; echo password=$(cat /tmp/.swtok); }; f" push origin main'`.
+- `GITHUB_TOKEN` holds a classic PAT with `repo`, `workflow`, `write:packages`.
+  Access a secret's value at runtime with
+  `curl -H "X-Expose-Secrets: encrypted" .../api/settings/secrets/<NAME>`
+  (never print it). A secret registered *after* a conversation starts is not
+  injected into that conversation's env — fetch it via the API instead.
+- Release flow: push `main` → the `docker.yml` workflow publishes `:edge`; push a
+  `vX.Y.Z` tag → it publishes `:X.Y.Z`, `:X.Y`, `:latest`. Then create the GitHub
+  Release (the tag alone does not create one).
+- Funding is configured in `.github/FUNDING.yml` via the PayPal link for
+  `kirupa.business@gmail.com`.
+
 ## Docs map
 
 `README.md` (overview, configuration) • `docs/INSTALLATION.md` •
