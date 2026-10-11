@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Dashboard redesign** - new design-token system with self-hosted Inter,
+  light/dark themes (per-browser toggle, defaulting to the OS preference), a
+  gradient brand accent, status-colored cards and accents, a sticky glass top
+  bar, animated status indicators, and refined motion. The public status page
+  now shares the same visual language. No functional changes.
+
 ## [0.1.0] - 2026-10-10
 
 First Community Edition release: a lightweight, self-hosted uptime monitoring

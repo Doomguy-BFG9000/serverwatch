@@ -2,6 +2,28 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 
+// Light/dark theme. The choice is stored per browser and applied as
+// `data-theme` on <html>; when the user has never chosen, the OS preference is
+// used. All colors resolve from the tokens declared in index.css.
+type ThemeName = 'light' | 'dark'
+const themeStorageKey = 'serverwatch_theme'
+
+function readStoredTheme(): ThemeName | null {
+  try {
+    const value = window.localStorage.getItem(themeStorageKey)
+    return value === 'light' || value === 'dark' ? value : null
+  } catch {
+    return null
+  }
+}
+
+function systemPrefersDark(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+  )
+}
+
 // API access token (Phase 0.48). The backend only enforces a token when
 // SERVERWATCH_API_TOKEN is configured; when it is not, the header is ignored
 // and the dashboard behaves exactly as before. The token is stored in the
@@ -408,6 +430,11 @@ function parsePortsInput(value: string): {
 }
 
 function App() {
+  // Theme follows an explicit per-browser choice, or the OS preference until the
+  // user picks one. `data-theme` on <html> selects the token set in index.css.
+  const [theme, setTheme] = useState<ThemeName>(() =>
+    readStoredTheme() ?? (systemPrefersDark() ? 'dark' : 'light'),
+  )
   const [monitors, setMonitors] = useState<MonitorStatus[]>([])
   const [groups, setGroups] = useState<Group[]>([])
   const [groupFilter, setGroupFilter] = useState<
@@ -811,6 +838,16 @@ function App() {
   useEffect(() => {
     checkAuthStatus()
   }, [])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    try {
+      window.localStorage.setItem(themeStorageKey, theme)
+    } catch {
+      // A blocked localStorage must not break rendering; the in-memory theme
+      // still applies for this session.
+    }
+  }, [theme])
 
   useEffect(() => {
     // Only poll once we know whether the dashboard is accessible. When auth is
@@ -1912,14 +1949,27 @@ function buildResponseChart(data: MonitorChartPoint[]) {
   return (
     <div className="app">
       <header className="topbar">
-        <div>
-          <h1>ServerWatch</h1>
-          <p>Community Edition</p>
-          {__APP_VERSION__ !== 'dev' && (
-            <p className="build-version" title="Backend and dashboard build">
-              {__APP_VERSION__}
-            </p>
-          )}
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path
+                d="M2 12h4l3-7 4 14 3-7h6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+          <div className="brand-text">
+            <h1>ServerWatch</h1>
+            <p>Community Edition</p>
+            {__APP_VERSION__ !== 'dev' && (
+              <p className="build-version" title="Backend and dashboard build">
+                {__APP_VERSION__}
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="topbar-actions">
@@ -1957,6 +2007,39 @@ function buildResponseChart(data: MonitorChartPoint[]) {
               </button>
             </div>
           )}
+
+          <button
+            type="button"
+            className="theme-toggle"
+            aria-label={
+              theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+            }
+            title={
+              theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+            }
+            onClick={() =>
+              setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
+            }
+          >
+            {theme === 'dark' ? (
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" fill="currentColor" />
+                <path
+                  d="M12 2v2.5M12 19.5V22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2 12h2.5M19.5 12H22M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"
+                  fill="currentColor"
+                />
+              </svg>
+            )}
+          </button>
 
           <div className="live-indicator">
             <span />
@@ -2374,6 +2457,9 @@ function buildResponseChart(data: MonitorChartPoint[]) {
                       <div>
                         <div className="monitor-title-row">
                           <h3>{monitor.name}</h3>
+                          <span className="monitor-type">
+                            {monitor.monitor_type}
+                          </span>
                           {monitor.enabled && monitor.maintenance && (
                             <span className="maintenance-badge">
                               Maintenance
