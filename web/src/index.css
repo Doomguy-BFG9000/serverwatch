@@ -40,6 +40,14 @@
   --surface-3: #eef2f8;
   --surface-glass: rgba(255, 255, 255, 0.72);
 
+  /* Animated background aurora + dot grid (decorative layers) */
+  --aurora-1: rgba(99, 102, 241, 0.30);
+  --aurora-2: rgba(168, 85, 247, 0.26);
+  --aurora-3: rgba(236, 72, 153, 0.20);
+  --aurora-4: rgba(34, 211, 238, 0.20);
+  --grid-dot: rgba(15, 23, 42, 0.06);
+  --shimmer: rgba(255, 255, 255, 0.55);
+
   /* Text */
   --text: #1c2536;
   --text-strong: #0f172a;
@@ -63,6 +71,13 @@
   --disabled-soft: rgba(100, 116, 139, 0.14);
   --info: #2563eb;
   --info-soft: rgba(37, 99, 235, 0.1);
+
+  /* Status glows used by card hovers and accents */
+  --up-glow: rgba(22, 163, 74, 0.28);
+  --down-glow: rgba(225, 29, 72, 0.30);
+  --pending-glow: rgba(217, 119, 6, 0.28);
+  --maintenance-glow: rgba(124, 58, 237, 0.30);
+  --neutral-glow: rgba(15, 23, 42, 0.16);
 
   /* Elevation */
   --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
@@ -111,6 +126,13 @@ html[data-theme='dark'] {
   --surface-3: #1d283c;
   --surface-glass: rgba(16, 23, 37, 0.72);
 
+  --aurora-1: rgba(99, 102, 241, 0.42);
+  --aurora-2: rgba(168, 85, 247, 0.36);
+  --aurora-3: rgba(236, 72, 153, 0.26);
+  --aurora-4: rgba(34, 211, 238, 0.24);
+  --grid-dot: rgba(148, 163, 184, 0.10);
+  --shimmer: rgba(255, 255, 255, 0.08);
+
   --text: #d6dced;
   --text-strong: #f4f7ff;
   --text-muted: #94a3b8;
@@ -131,6 +153,12 @@ html[data-theme='dark'] {
   --disabled-soft: rgba(148, 163, 184, 0.16);
   --info: #60a5fa;
   --info-soft: rgba(96, 165, 250, 0.16);
+
+  --up-glow: rgba(52, 211, 153, 0.42);
+  --down-glow: rgba(251, 113, 133, 0.44);
+  --pending-glow: rgba(251, 191, 36, 0.42);
+  --maintenance-glow: rgba(167, 139, 250, 0.46);
+  --neutral-glow: rgba(0, 0, 0, 0.5);
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
@@ -161,12 +189,61 @@ body {
   color: var(--text);
   font-family: var(--font-sans);
   background-color: var(--bg);
+  /* Base wash: a pure-CSS dot grid plus two soft corner glows. No image asset,
+     so it stays within img-src/style-src 'self'. */
   background-image:
+    radial-gradient(var(--grid-dot) 1px, transparent 1px),
     radial-gradient(58rem 42rem at 100% -12%, var(--bg-glow-1), transparent 62%),
     radial-gradient(52rem 38rem at -12% 2%, var(--bg-glow-2), transparent 58%);
-  background-attachment: fixed;
-  background-repeat: no-repeat;
+  background-size: 22px 22px, 100% 100%, 100% 100%;
+  background-attachment: fixed, fixed, fixed;
+  background-repeat: repeat, no-repeat, no-repeat;
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Two slow colour blobs drifting behind the content. Fixed and rasterized by a
+   blur so they read as an aurora, and negative z-index keeps them above the
+   body wash but below every card. */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+  filter: blur(68px);
+  will-change: transform;
+}
+
+body::before {
+  top: -18vmax;
+  left: -12vmax;
+  width: 58vmax;
+  height: 58vmax;
+  background:
+    radial-gradient(circle at 35% 35%, var(--aurora-1), transparent 68%),
+    radial-gradient(circle at 70% 60%, var(--aurora-4), transparent 70%);
+  animation: sw-drift-a 26s ease-in-out infinite alternate;
+}
+
+body::after {
+  bottom: -20vmax;
+  right: -14vmax;
+  width: 62vmax;
+  height: 62vmax;
+  background:
+    radial-gradient(circle at 60% 40%, var(--aurora-2), transparent 68%),
+    radial-gradient(circle at 30% 70%, var(--aurora-3), transparent 70%);
+  animation: sw-drift-b 32s ease-in-out infinite alternate;
+}
+
+@keyframes sw-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(6vmax, 4vmax, 0) scale(1.14); }
+}
+
+@keyframes sw-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1.06); }
+  to { transform: translate3d(-7vmax, -5vmax, 0) scale(1); }
 }
 
 button,
