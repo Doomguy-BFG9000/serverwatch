@@ -99,7 +99,15 @@ main() {
   log "service           : $SERVICE"
 
   # -- 1. Back up the environment file ------------------------------------
-  ENV_BACKUP="${ENV_FILE}.bak.${STAMP}"
+  # Keep the backup outside the install tree: it holds the same secrets as the
+  # environment file, so leaving it next to the checkout risks committing it.
+  BACKUP_DIR="${SERVERWATCH_BACKUP_DIR:-/var/backups/serverwatch}"
+  if ! mkdir -p "$BACKUP_DIR" 2>/dev/null || [ ! -w "$BACKUP_DIR" ]; then
+    BACKUP_DIR="$HOME/.serverwatch-backups"
+    mkdir -p "$BACKUP_DIR"
+  fi
+  chmod 700 "$BACKUP_DIR" 2>/dev/null || true
+  ENV_BACKUP="${BACKUP_DIR}/serverwatch.env.bak.${STAMP}"
   cp -p "$ENV_FILE" "$ENV_BACKUP"
   chmod 600 "$ENV_BACKUP" 2>/dev/null || true
   log "backed up environment file -> $ENV_BACKUP"

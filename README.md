@@ -17,6 +17,11 @@ Community Edition **0.1.0** — first release. The backend, dashboard, alerting,
 operations tooling are ready to self-host; see [CHANGELOG.md](CHANGELOG.md) for
 what is included and [docs/ROADMAP.md](docs/ROADMAP.md) for what is planned.
 
+**Links:** [Website](https://smartphpfreelancers-sys.github.io/serverwatch/) ·
+[Install](docs/INSTALLATION.md) · [Configuration](docs/CONFIGURATION.md) ·
+[Security](docs/SECURITY.md) · [Changelog](CHANGELOG.md) · [Releases](https://github.com/smartphpfreelancers-sys/serverwatch/releases) ·
+[Discussions](https://github.com/smartphpfreelancers-sys/serverwatch/discussions)
+
 ## Quick start
 
 ```bash
@@ -28,8 +33,9 @@ docker compose --env-file serverwatch.env up -d postgres
 ```
 
 Download a prebuilt bundle from
-[Releases](https://github.com/smartphpfreelancers-sys/serverwatch/releases), or build from
-source with `make build && make web-build`. Full walkthrough:
+[Releases](https://github.com/smartphpfreelancers-sys/serverwatch/releases)
+(`linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`, `windows/amd64`),
+or build from source with `make build && make web-build`. Full walkthrough:
 [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
 ## Run with Docker
@@ -38,18 +44,15 @@ The container is self-contained: it serves the dashboard, proxies the API, and
 runs the monitor scheduler. It only needs a Postgres database.
 
 ```bash
-# 1. Grab a compose file and an env file
+# 1. Grab the compose file and an env file
 curl -O https://raw.githubusercontent.com/smartphpfreelancers-sys/serverwatch/main/deployments/docker/docker-compose.yml
-cp .env.example serverwatch.env        # edit POSTGRES_PASSWORD and any secrets
+curl -o serverwatch.env https://raw.githubusercontent.com/smartphpfreelancers-sys/serverwatch/main/.env.example
+# edit serverwatch.env: set POSTGRES_PASSWORD (and any secrets you want)
 
 # 2. Start the whole stack (app + Postgres)
 docker compose --env-file serverwatch.env up -d
 # open http://localhost:8080
 ```
-
-The published image is `ghcr.io/smartphpfreelancers-sys/serverwatch` (`:latest`, `:1.2`,
-`:1.2.3`, or `:edge` for the tip of `main`). It is a multi-arch manifest for
-`linux/amd64` and `linux/arm64`.
 
 Prefer a single `docker run` against your own database?
 
@@ -58,6 +61,10 @@ docker run -d --name serverwatch -p 8080:80 \
   -e DATABASE_URL="postgres://user:pass@your-db:5432/serverwatch?sslmode=disable" \
   ghcr.io/smartphpfreelancers-sys/serverwatch:latest
 ```
+
+The published image is `ghcr.io/smartphpfreelancers-sys/serverwatch` with the
+tags `:latest`, `:0.1`, `:0.1.0`, and `:edge` (the tip of `main`). It is a
+multi-arch manifest for `linux/amd64` and `linux/arm64`.
 
 The backend and migrations run automatically on first start. Secrets are read
 from environment variables only - never bake them into the image. See
@@ -114,11 +121,27 @@ ServerWatch. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - `scripts/` - helper/install scripts (backup, restore, release)
 - `deployments/` - systemd, Nginx, and Docker deployment templates
 
+## Screenshots
+
+**Public status page** — share a read-only view of uptime without exposing your
+dashboard or configuration:
+
+![ServerWatch public status page](docs/images/status-page.png)
+
+**Dark and light themes** — the dashboard follows your operating system by
+default and remembers an explicit choice:
+
+<p>
+  <img src="docs/images/dashboard-dark.png" width="49%" alt="ServerWatch dashboard in dark theme">
+  <img src="docs/images/dashboard-light.png" width="49%" alt="ServerWatch dashboard in light theme">
+</p>
+
 ## Documentation
 
 - [Installation](docs/INSTALLATION.md) - install a release and serve the dashboard
 - [Configuration](docs/CONFIGURATION.md) - every environment variable and feature
 - [Architecture](docs/ARCHITECTURE.md) - how monitoring and checks work
+- [Deployment security](docs/SECURITY.md) - authentication, TLS, and hardening
 - [Backup and restore](docs/BACKUP_RESTORE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Development](docs/DEVELOPMENT.md)
@@ -350,9 +373,17 @@ docker build --build-arg VERSION=0.1.0 -t serverwatch:dev .
 
 ServerWatch Community Edition is Apache-2.0 licensed and free to self-host.
 Sponsorship keeps maintenance going and funds new features - it is a donation,
-not a license or a support contract. If the project is useful to you, the
-Sponsor button on the repository is the best way to help. Funding platforms are
-configured in [.github/FUNDING.yml](.github/FUNDING.yml).
+not a license or a support contract.
+
+**Sponsor the project:** the [Sponsor button](https://github.com/sponsors)
+on the repository opens the configured funding page. The current option is a
+one-off donation via PayPal:
+[**Donate with PayPal**](https://www.paypal.com/ncp/payment/AYGU897UBQ3DE).
+Funding options live in [.github/FUNDING.yml](.github/FUNDING.yml).
+
+What sponsorship pays for: dependency and security updates, new check types,
+documentation, and the time to review pull requests. If your company uses
+ServerWatch in production, a sponsor line here is a cheap way to say thanks.
 
 If ServerWatch is useful to you, a **⭐ Star** helps others discover it - it is
 the single biggest thing you can do to support the project. You can also

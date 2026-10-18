@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 serverwatch.env
+serverwatch.env.bak.*
+*.env.bak.*
 # Secrets / keys
 *.pem
 *.key
