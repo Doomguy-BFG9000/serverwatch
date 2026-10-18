@@ -16,7 +16,7 @@ FROM node:22-alpine AS web
 RUN corepack enable
 WORKDIR /web
 # Copy manifests first so the dependency layer is cached across source edits.
-COPY web/package.json web/pnpm-lock.yaml ./
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY web/ ./
 ARG VERSION=dev
