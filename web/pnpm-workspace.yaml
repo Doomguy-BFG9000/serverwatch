@@ -1,0 +1,5 @@
+# pnpm 11 reads overrides from here, not from package.json.
+# postcss (via vite) pinned source-map-js 1.2.1, which has a high-severity
+# advisory; 1.2.2 is the patched release.
+overrides:
+  source-map-js: ^1.2.2
